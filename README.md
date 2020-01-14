@@ -27,23 +27,23 @@ Current features:
      pressed in (better: replace that servo)
 
 Control by using the button with "gestures":
-  Single Click: ...............Toggle idle or mimic mode
-  Single Click and Hold: ......Enter Recording Mode:
-    Single Click: .............Add position
-    Single Click and hold: ....Exit recording mode
-  Double Click: ...............Enter Playback Mode:
-    Any button press: .........Exit playback mode
-  Double Click and Hold: ......Park the servo arm and save any recording to the EEPROM
+  + Single Click:                Toggle idle or mimic mode
+  + Single Click and Hold:       Enter Recording Mode:
+    + Single Click:              Add position
+    + Single Click and hold:     Exit recording mode
+  + Double Click:                Enter Playback Mode:
+    + Any button press:          Exit playback mode
+  + Double Click and Hold:       Park the servo arm and save any recording to the EEPROM
 
 TODO:
- - Change on/off switch to DPDT to control both Vcc for logic and Vdd for servos
- - Add googly eyes to servo arm :-)
- - Add ability to play "Scissors/Rock/Paper" against the arm! :-)
- - Add mic and op-amp to have dance-party mode!
- - Enhance the output arm so it takes the position of each servo into account
+ + Change on/off switch to DPDT to control both Vcc for logic and Vdd for servos
+ + Add googly eyes to servo arm :-)
+ + Add ability to play "Scissors/Rock/Paper" against the arm! :-)
+ + Add mic and op-amp to have dance-party mode!
+ + Enhance the output arm so it takes the position of each servo into account
      when moving to a new set of positions so the deltas for each movement
      can be evenly spread across a given amount of time. This will allow
      further enhancement as a "playback speed" setting can then be added.
- - Add a SoftSerial port and implement an API to allow external control
- - Add HM-10 BlueTooth module to SoftSerial port for wireless control
+ + Add a SoftSerial port and implement an API to allow external control
+ + Add HM-10 BlueTooth module to SoftSerial port for wireless control
 
