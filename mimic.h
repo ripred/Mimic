@@ -6,6 +6,8 @@
 
 enum LEDCOLOR { OFF, RED, GREEN, ORANGE };
 
+enum Mode { MIMIC, IDLE };
+
 #ifndef UNUSED
 #define UNUSED(var) do { (void) var; } while (0);
 #endif
@@ -16,27 +18,29 @@ struct Limits;
 // The Pos structure is used to hold the four values for an arm
 struct Pos {
   unsigned pinch, wrist, elbow, waist;
-};
 
-// The Arm structure is used to hold the four values for an arm
-// and to be able to clip the values to their allowed ranges
-struct Arm : public Pos {
-  Arm() {
+  Pos() {
     pinch = wrist = elbow = waist = 0;
   }
 
-  Arm(int pinchVal, int wristVal, int elbowVal, int waistVal) {
+  Pos(int pinchVal, int wristVal, int elbowVal, int waistVal) {
     pinch = pinchVal;
     wrist = wristVal;
     elbow = elbowVal;
     waist = waistVal;
   }
+};
 
-  Arm(const Arm &rhs) {
-    pinch = rhs.pinch;
-    wrist = rhs.wrist;
-    elbow = rhs.elbow;
-    waist = rhs.waist;
+// The Arm structure is used to hold the four values for an arm
+// and to be able to clip the values to their allowed ranges
+struct Arm : public Pos {
+  Arm() : Pos() {
+  }
+
+  Arm(int pinchVal, int wristVal, int elbowVal, int waistVal) : Pos(pinchVal, wristVal, elbowVal, waistVal) {
+  }
+
+  Arm(const Arm &rhs) : Pos(rhs.pinch, rhs.wrist, rhs.elbow, rhs.waist)  {
   }
 
   static uint16_t clip(uint16_t value, uint16_t limit1, uint16_t limit2) {
@@ -51,7 +55,7 @@ struct Arm : public Pos {
     return value;
   }
   
-  Arm &clip(Arm &limit1, Arm &limit2) {
+  Arm &clip(Pos &limit1, Pos &limit2) {
     pinch = clip(pinch, limit1.pinch, limit2.pinch);
     wrist = clip(wrist, limit1.wrist, limit2.wrist);
     elbow = clip(elbow, limit1.elbow, limit2.elbow);
@@ -60,7 +64,11 @@ struct Arm : public Pos {
     return *this;
   }
 
-  Arm &clip(Limits &limits);
+  Arm &clip(Arm &limit1, Arm &limit2) {
+    return clip(dynamic_cast<Pos&>(limit1), dynamic_cast<Pos&>(limit2));
+  }
+
+  Pos &clip(Limits &limits);
 };
 
 
@@ -69,9 +77,12 @@ struct Arm : public Pos {
 // clip the values to their allowed ranges.
 //
 struct Limits {
-  Arm a, b;
+  Pos a, b;
 
   Limits() {
+  }
+
+  Limits(Pos &limit1, Pos &limit2) : a(limit1), b(limit2) {
   }
 
   Limits(Arm &limit1, Arm &limit2) : a(limit1), b(limit2) {
@@ -79,7 +90,7 @@ struct Limits {
 };
 
 
-Arm &Arm::clip(Limits &limits) {
+Pos &Arm::clip(Limits &limits) {
   return clip(limits.a, limits.b);
 }
 
@@ -109,13 +120,28 @@ struct Node {
 
 
 template <class T>
-struct Tree {
+struct LinkedList {
   Node<T> *head, *tail;
 
-  Tree() : head(nullptr), tail(nullptr) {
+  LinkedList() : head(nullptr), tail(nullptr) {
   }
 
-  Tree(T r) : head(new Node<T>(r, nullptr, nullptr)), tail(head) {
+  LinkedList(T r) : head(new Node<T>(r, nullptr, nullptr)), tail(head) {
+  }
+
+  virtual ~LinkedList() {
+    clear();
+  }
+
+  bool empty() {
+    return head == nullptr && tail == nullptr;
+  }
+
+  void clear() {
+    while (head != nullptr) {
+      head = removeHead();
+    }
+    tail = nullptr;
   }
 
   Node<T> *addTail(T r) {
@@ -170,24 +196,16 @@ struct Tree {
     return head;
   }
 
-  void clear() {
-    while (head != nullptr) {
-      head = removeHead();
-    }
-    tail = nullptr;
-  }
-
-  bool empty() {
-    return head == nullptr && tail == nullptr;
-  }
-
-  void foreach(void (*func)(T &)) {
+  int foreach(int (*func)(T &)) {
     Node<T> *p = head;
     while (p != nullptr) {
-      func(p->t);
+      if (func(p->t) != 0)
+        return 1;
       p = p->next;
     }
+    return 0;
   }
+
 };
 
 #endif // #ifndef MIMIC_H_INCL

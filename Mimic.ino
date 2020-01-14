@@ -9,28 +9,46 @@
 |*| The second arm is the output arm that can mimic the movements of the input arm
 |*| A pushbutton and a bi-color LED are provided as input and output for setup, mode selection etc.
 |*| An on/off switch is also included.
+|*| A jumper is included to allow single or dual voltage sources for logic and servos
+|*| Two 18650's power the logic and servos
+|*| Built in USB battery charger
 |*| 
 |*| Current features:
-|*|  + allows the output arm to mimic the input arm in real time.
-|*|  + allows the mimic to be disabled
-|*|  + can "park" the output arm so it lays flat across to box top
+|*|  + Allows the output arm to mimic the input arm in real time.
+|*|  + The mimic can be disabled
+|*|  + It can "park" the output arm so it lays flat across to box top
+|*|  + Movements can be recorded and played back
+|*|  + Recorded movements can be stored to/from EEPROM
+|*|  + Uses Button "Gestures" to multiplex the functionality of the single control button
+|*|  + During playback the "pinch" potentiometer controls the playback speed
+|*|  + Uses lightweight dynamic template based storage for recording, playback, and parking sequences
+|*|  + (hardware) Added a brace to pressure the wrist servo shaft so it stays
+|*|      pressed in (better: replace that servo)
+|*| 
+|*| Control by using the button with "gestures":
+|*|   Single Click: ...............Toggle idle or mimic mode
+|*|   Single Click and Hold: ......Enter Recording Mode:
+|*|     Single Click: .............Add position
+|*|     Single Click and hold: ....Exit recording mode
+|*|   Double Click: ...............Enter Playback Mode:
+|*|     Any button press: .........Exit playback mode
+|*|   Double Click and Hold: ......Park the servo arm and save any recording to the EEPROM
 |*| 
 |*| TODO:
-|*|  - Allow movements to be recorded (to EEPROM) and played back.
+|*|  - Change on/off switch to DPDT to control both Vcc for logic and Vdd for servos
+|*|  - Add googly eyes to servo arm :-)
+|*|  - Add ability to play "Scissors/Rock/Paper" against the arm! :-)
+|*|  - Add mic and op-amp to have dance-party mode!
 |*|  - Enhance the output arm so it takes the position of each servo into account
 |*|      when moving to a new set of positions so the deltas for each movement
 |*|      can be evenly spread across a given amount of time. This will allow
 |*|      further enhancement as a "playback speed" setting can then be added.
 |*|  - Add a SoftSerial port and implement an API to allow external control
-|*|  - (hardware) Add a brace to pressure the wrist servo shaft so it stays
-|*|      pressed in (better: replace that servo)
-|*|  + Modify the potentiometer reading so it keeps a running average
-|*|      of the last N samples to smooth out minor drifting
-|*|  + Modify button library to add a setting to tighten or loosen the 
-|*|      timing used to determine single, double, and triple clicks
+|*|  - Add HM-10 BlueTooth module to SoftSerial port for wireless control
 |*| 
 \*/
 
+#include <EEPROM.h>
 #include "mimic.h"
 #include "InputArm.h"
 #include "OutputArm.h"
@@ -40,7 +58,7 @@ void playback(int mS = 0);
 
 // ---------------------------------------------------------------------------------
 // Project specific pin connections
-// Change to match implementation
+// Change to match your implementation
 
 // bi-color LED (common anode)
 #define LED1    2
@@ -49,7 +67,7 @@ void playback(int mS = 0);
 // pushbutton (active low)
 #define BUTTON  7
 
-// 4 potentiometers in input arm (each 5K or 10K, connected across Vcc and Gnd)
+// 4 potentiometers in input arm (each 5K or 10K, connected across logic Vcc and Gnd)
 #define POT1    A0
 #define POT2    A1
 #define POT3    A2
@@ -65,25 +83,25 @@ void playback(int mS = 0);
 // Global variables
 
 //                     pinch open      wrist down    elbow forward    waist left
-static Arm iRange1 = {     80,           650,           758,               87     };
+static Pos iRange1 = {     80,           650,           758,               87     };
 //                     pinch closed    wrist up      elbow back       waist right
-static Arm iRange2 = {    850,           100,               30,           660     };
+static Pos iRange2 = {    850,           100,               30,           660     };
 //                     pinch open      wrist down    elbow forward    waist left
-static Arm oRange1 = {     20,            10,                0,             7     };
+static Pos oRange1 = {     20,            10,                0,             7     };
 //                     pinch closed    wrist up      elbow back       waist right
-static Arm oRange2 = {     80,           165,              165,            180    };
+static Pos oRange2 = {     80,           165,              165,            180    };
 
 static Limits iRange(iRange1, iRange2);
 static Limits oRange(oRange1, oRange2);
 
 static InputArm inArm(POT1, POT2, POT3, POT4, iRange);
 static OutputArm outArm(S1_PIN, S2_PIN, S3_PIN, S4_PIN, iRange, oRange);
-static int mode = 0;
-static Tree<Pos> saved;
+static LinkedList<Pos> saved;
 static int playbackPause = 400;
 bool stopPlayback = false;
-// ---------------------------------------------------------------------------------
+static int mode = 0;
 
+// ---------------------------------------------------------------------------------
 
 void setup() {
   initSerial();
@@ -93,58 +111,79 @@ void setup() {
 // Uncomment to manually set up the potentiometer limits
 //  setup_pot_values();
 
-  outArm.attachServos();
-
 // Uncomment to manually set up the servo limits
+//  outArm.attachServos();
 //  setup_servo_values();
 
-  setLED(RED);
+  // load last saved movements from EEPROM
+  loadFromEeprom();
+
+  setMode(IDLE);
 }
 
 void loop() {
   switch (getButton()) {
-    case DOUBLE_PRESS_LONG:
-      mode = 1;
-      outArm.park();
-      outArm.detachServos();
-      while (digitalRead(BUTTON) == LOW)
-        ;
   
+    // gesture to toggle the mode
+    case SINGLE_PRESS_SHORT:
+      setMode((mode + 1) % 2);
+      break;
+
+    // gesture to start recording
+    case SINGLE_PRESS_LONG:
+      outArm.attachServos();
+      record();
+      setMode(mode);
+      break;
+  
+    // gesture to start playback
+    case DOUBLE_PRESS_SHORT:
+      outArm.attachServos();
+      playback(1000);
+      setMode(mode);
+      break;
+
+    // gesture for parking the arm
+    case DOUBLE_PRESS_LONG:
+      outArm.park();
+      setMode(IDLE);
+      waitForButtonRelease();
       for (int v=0; v < 5; v++) {
         setLED(RED);
         delay(250);
         setLED(OFF);
         delay(250);
       }
-      break;
-  
-    case SINGLE_PRESS_SHORT:
-      mode = (mode + 1) % 2;
-      setLED(mode + 1);
-  
-      if (mode == 1)
-        outArm.detachServos();
-      else if (mode == 0)
-        outArm.attachServos();
-      break;
-  
-    case DOUBLE_PRESS_SHORT:
-      playback(1000);
-      break;
-
-    case SINGLE_PRESS_LONG:
-      record();
+      saveToEeprom();
       break;
   }
 
-  if (mode == 0) {
+  if (mode == MIMIC) {
     mimic();
   }
 }
 
+// ==============================================================
+// Utility functions
+
+void setMode(int m) {
+  mode = m;
+  setLED(mode + 1);
+  switch (mode) {
+    case IDLE:
+    outArm.detachServos();
+    break;
+
+    case MIMIC:
+    outArm.attachServos();
+    break;
+  }
+}
+
+// ==============================================================
+// Record and playback functions
 
 void record() {
-  Serial.println("record");
   int button;
   saved.clear();
   for (int i=0; i < 5; i++) {
@@ -154,7 +193,8 @@ void record() {
     delay(100);
   }
 
-  setLED(RED);
+  waitForButtonRelease();
+  setLED(ORANGE);
 
   do {
     mimic();
@@ -163,71 +203,94 @@ void record() {
       case SINGLE_PRESS_SHORT:
         saved.addTail(outArm);
         setLED(GREEN);
-        delay(250);
-        setLED(RED);
+        delay(50);
+        setLED(ORANGE);
         break;
     }
   } while (button != SINGLE_PRESS_LONG);
 
-  setLED(GREEN);
-
-  while (!digitalRead(BUTTON))
-    delay(10);
-
-  Serial.println("record done");
-  setLED(RED);
-}
-
-
-void play(Pos &p) {
-  Serial.println("play");
-  outArm = p;
-  outArm.write();
-  setLED(RED);
-  if (0 != playbackPause) {
-    unsigned long timer = millis() + playbackPause;
-    while (millis() < timer) {
-      if (getButton() != NOT_PRESSED) {
-        stopPlayback = true;
-        break;
-      }
-    }
-  }
-  setLED(GREEN);
+  setLED(OFF);
+  waitForButtonRelease();
 }
 
 
 void playback(int mS) {
-  Serial.println("playback");
   if (saved.empty()) {
     for (int i=0; i < 5; i++) {
       setLED(OFF);
-      delay(100);
+      delay(50);
       setLED(RED);
-      delay(100);
+      delay(50);
     }
     return;
   }
 
   setLED(GREEN);
+  stopPlayback = false;
   playbackPause = mS;
-  while (1) {
-    playbackPause = map(inArm.readPinch(), iRange2.pinch, iRange1.pinch, 400, 3000);
-    if (getButton() != NOT_PRESSED || stopPlayback) {
-      stopPlayback = false;
-      break;
-    }
-    saved.foreach(play);
+  while (!stopPlayback) {
+    saved.foreach([](Pos &p) -> int {
+      if (!stopPlayback) {
+        outArm = p;
+        outArm.write();
+        setLED(RED);
+        if (0 != playbackPause) {
+          unsigned long now = millis();
+          while (millis() < now + playbackPause) {
+            if (getButton() != NOT_PRESSED) {
+              stopPlayback = true;
+              return 1;
+            }
+            playbackPause = map(inArm.readPinch(), iRange2.pinch, iRange1.pinch, 400, 3000);
+          }
+        }
+        setLED(GREEN);
+      }
+      return 0;
+    });
   }
-  setLED(RED);
-  Serial.println("playback done");
+
+  setLED(OFF);
+  waitForButtonRelease();
 }
 
+// ==============================================================
+// EEPROM functions
+
+void saveToEeprom() {
+  static int eepromCount;
+  eepromCount = 0;
+  // use C++11 lambda function to save each position
+  saved.foreach(
+    // Lambda expression begins
+    [](Pos &r) -> int {
+      EEPROM.put(sizeof(eepromCount) + eepromCount * sizeof(Pos), r);
+      eepromCount++;
+      return 0;
+    } // end of lambda expression
+  );
+  EEPROM.put(0, eepromCount);
+}
+
+
+void loadFromEeprom() {
+  saved.clear();
+  int eepromCount = 0;
+  EEPROM.get(0, eepromCount);
+  for (int i=0; i < eepromCount; i++) {
+    Pos p;
+    EEPROM.get(sizeof(eepromCount) + i * sizeof(Pos), p);
+    saved.addTail(p);
+  }
+}
+
+// ==============================================================
+// Manual calibration functions
 
 void setup_pot_values() {
   while (1) {
     char buff[128] = "";
-    sprintf(buff, "pinch = %3d    wrist = %3d    elbow = %3d    waist = %3d", 
+    sprintf(buff, "pinch = %3d  wrist = %3d  elbow = %3d  waist = %3d",
       analogRead(A0), 
       analogRead(A1), 
       analogRead(A2), 
@@ -236,7 +299,6 @@ void setup_pot_values() {
     Serial.println(buff);
   }
 }
-
 
 void setup_servo_values() {
   outArm.writePinch(20);   // 80 = closed, 20 = open
@@ -247,12 +309,13 @@ void setup_servo_values() {
   while (1);
 }
 
+// ==============================================================
+// mimic function
 
 void mimic() {
   outArm = inArm.read();
   outArm.write();
 }
-
 
 // ==============================================================
 // Serial functions
@@ -285,8 +348,8 @@ void initLED() {
 // 3 = orange
 // 
 void setLED(int value) {
-  digitalWrite( LED1, (value & 1) ? LOW : HIGH);
-  digitalWrite( LED2, (value & 2) ? LOW : HIGH);
+  digitalWrite(LED1, (value & 1) ? LOW : HIGH);
+  digitalWrite(LED2, (value & 2) ? LOW : HIGH);
 }
 
 // ==============================================================
@@ -310,36 +373,7 @@ int getButton() {
   return result;
 }
 
-void report_button(const char state)  {
-  switch (state) {
-    case SINGLE_PRESS_SHORT: Serial.println(F("Single button short press")); break;
-    case SINGLE_PRESS_LONG:  Serial.println(F("Single button long  press")); break;
-    case DOUBLE_PRESS_SHORT: Serial.println(F("Double button short press")); break;
-    case DOUBLE_PRESS_LONG:  Serial.println(F("Double button long  press")); break;
-    case TRIPLE_PRESS_SHORT: Serial.println(F("Triple button short press")); break;
-    case TRIPLE_PRESS_LONG:  Serial.println(F("Triple button long  press")); break;
-    default:
-    case NOT_PRESSED:
-      return;
-  }
-}
-
-
-// Move the referenced servo to the specified position
-// and then wait for the user to set the potentiometer
-// specified in 'inpin' to the correct position and
-// then press the pushbutton to set it
-// 
-uint16_t setPot(Servo& s, uint8_t pos, int inpin) {
-  UNUSED(s);
-  UNUSED(pos);
-
-//  s.write(pos);
-//
-  uint16_t value = analogRead(inpin);
-//  while(getButton() == 0) {
-//    value = analogRead(inpin);
-//  }
-//
-  return value;
+void waitForButtonRelease() {
+  while (!digitalRead(BUTTON))
+    delay(5);
 }
