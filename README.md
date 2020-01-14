@@ -47,4 +47,4 @@ TODO:
  + Add a SoftSerial port and implement an API to allow external control
  + Add HM-10 BlueTooth module to SoftSerial port for wireless control
  + Use the serial API to drive the arm from my JavaChess repo
-
+ + Use the serial API to be able generate arm animations whe someone scores from my nhl/baseball feeds repo
