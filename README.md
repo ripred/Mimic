@@ -4,6 +4,8 @@
 
 Created January 2020 by Trent M. Wyatt
 
+![](Mimic.png)
+
 + Box with two arms, each with 4 degrees of freedom: Waist, Elbow, Wrist, and Pincher.
 + The first arm has a 5K or 10K potentiometer at each joint and the other arm has a servo at each joint.
 + The first arm is the input arm, reading the 4 analog values from the pots
@@ -48,3 +50,6 @@ TODO:
  + Add HM-10 BlueTooth module to SoftSerial port for wireless control
  + Use the serial API to drive the arm from my JavaChess repo
  + Use the serial API to be able generate arm animations whe someone scores from my nhl/baseball feeds repo
+
+![](MimicSchematic.png)
+
