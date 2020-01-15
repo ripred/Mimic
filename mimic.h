@@ -12,12 +12,34 @@ enum Mode { MIMIC, IDLE };
 #define UNUSED(var) do { (void) var; } while (0);
 #endif
 
+void flashLED(int color, int color2 = OFF, int count = 5, int timing = 200, bool restore = false);
+
+// The AppState structure is used to hold various program state values
+struct AppState {
+  unsigned
+    ledColor      :  2,
+    mode          :  1,
+    stopPlayback  :  1,
+    playbackPause : 13;
+
+  AppState() {
+    ledColor = OFF;
+    mode = IDLE;
+    stopPlayback = 0;
+    playbackPause = 400;
+  }
+};
+
 // forward declaration for structure not defined until later
 struct Limits;
 
 // The Pos structure is used to hold the four values for an arm
 struct Pos {
-  unsigned pinch, wrist, elbow, waist;
+  unsigned
+    pinch : 10,
+    wrist : 10,
+    elbow : 10,
+    waist : 10;
 
   Pos() {
     pinch = wrist = elbow = waist = 0;

@@ -45,6 +45,8 @@
 |*|      further enhancement as a "playback speed" setting can then be added.
 |*|  - Add a SoftSerial port and implement an API to allow external control
 |*|  - Add HM-10 BlueTooth module to SoftSerial port for wireless control
+|*|  - Use the serial API to drive the arm from my JavaChess repo
+|*|  - Use the serial API to be able generate arm animations whe someone scores from my nhl/baseball feeds repo
 |*| 
 \*/
 
@@ -53,8 +55,6 @@
 #include "InputArm.h"
 #include "OutputArm.h"
 #include "ButtonLib2.h"
-
-void playback(int mS = 0);
 
 // ---------------------------------------------------------------------------------
 // Project specific pin connections
@@ -67,13 +67,13 @@ void playback(int mS = 0);
 // pushbutton (active low)
 #define BUTTON  7
 
-// 4 potentiometers in input arm (each 5K or 10K, connected across logic Vcc and Gnd)
+// There are 4 potentiometers in the input arm (each 5K or 10K, connected across logic Vcc and Gnd)
 #define POT1    A0
 #define POT2    A1
 #define POT3    A2
 #define POT4    A3
 
-// 4 servos in output arm
+// There are 4 servos in the output arm
 #define S1_PIN  3
 #define S2_PIN  5
 #define S3_PIN  6
@@ -97,9 +97,7 @@ static Limits oRange(oRange1, oRange2);
 static InputArm inArm(POT1, POT2, POT3, POT4, iRange);
 static OutputArm outArm(S1_PIN, S2_PIN, S3_PIN, S4_PIN, iRange, oRange);
 static LinkedList<Pos> saved;
-static int playbackPause = 400;
-bool stopPlayback = false;
-static int mode = 0;
+static AppState appState;
 
 // ---------------------------------------------------------------------------------
 
@@ -112,7 +110,6 @@ void setup() {
 //  setup_pot_values();
 
 // Uncomment to manually set up the servo limits
-//  outArm.attachServos();
 //  setup_servo_values();
 
   // load last saved movements from EEPROM
@@ -124,23 +121,23 @@ void setup() {
 void loop() {
   switch (getButton()) {
   
-    // gesture to toggle the mode
+    // gesture to toggle the appState.mode
     case SINGLE_PRESS_SHORT:
-      setMode((mode + 1) % 2);
+      setMode((appState.mode + 1) % 2);
       break;
 
     // gesture to start recording
     case SINGLE_PRESS_LONG:
       outArm.attachServos();
       record();
-      setMode(mode);
+      setMode(appState.mode);
       break;
   
     // gesture to start playback
     case DOUBLE_PRESS_SHORT:
       outArm.attachServos();
       playback(1000);
-      setMode(mode);
+      setMode(appState.mode);
       break;
 
     // gesture for parking the arm
@@ -148,17 +145,12 @@ void loop() {
       outArm.park();
       setMode(IDLE);
       waitForButtonRelease();
-      for (int v=0; v < 5; v++) {
-        setLED(RED);
-        delay(250);
-        setLED(OFF);
-        delay(250);
-      }
+      flashLED(RED);
       saveToEeprom();
       break;
   }
 
-  if (mode == MIMIC) {
+  if (appState.mode == MIMIC) {
     mimic();
   }
 }
@@ -167,9 +159,9 @@ void loop() {
 // Utility functions
 
 void setMode(int m) {
-  mode = m;
-  setLED(mode + 1);
-  switch (mode) {
+  appState.mode = m;
+  setLED(appState.mode + 1);
+  switch (appState.mode) {
     case IDLE:
     outArm.detachServos();
     break;
@@ -186,13 +178,7 @@ void setMode(int m) {
 void record() {
   int button;
   saved.clear();
-  for (int i=0; i < 5; i++) {
-    setLED(OFF);
-    delay(200);
-    setLED(GREEN);
-    delay(100);
-  }
-
+  flashLED(GREEN);
   waitForButtonRelease();
   setLED(ORANGE);
 
@@ -216,32 +202,27 @@ void record() {
 
 void playback(int mS) {
   if (saved.empty()) {
-    for (int i=0; i < 5; i++) {
-      setLED(OFF);
-      delay(50);
-      setLED(RED);
-      delay(50);
-    }
+    flashLED(RED);
     return;
   }
 
   setLED(GREEN);
-  stopPlayback = false;
-  playbackPause = mS;
-  while (!stopPlayback) {
+  appState.stopPlayback = false;
+  appState.playbackPause = mS;
+  while (!appState.stopPlayback) {
     saved.foreach([](Pos &p) -> int {
-      if (!stopPlayback) {
+      if (!appState.stopPlayback) {
         outArm = p;
         outArm.write();
         setLED(RED);
-        if (0 != playbackPause) {
+        if (0 != appState.playbackPause) {
           unsigned long now = millis();
-          while (millis() < now + playbackPause) {
+          while (millis() < now + appState.playbackPause) {
             if (getButton() != NOT_PRESSED) {
-              stopPlayback = true;
+              appState.stopPlayback = true;
               return 1;
             }
-            playbackPause = map(inArm.readPinch(), iRange2.pinch, iRange1.pinch, 400, 3000);
+            appState.playbackPause = map(inArm.readPinch(), iRange2.pinch, iRange1.pinch, 400, 3000);
           }
         }
         setLED(GREEN);
@@ -285,31 +266,6 @@ void loadFromEeprom() {
 }
 
 // ==============================================================
-// Manual calibration functions
-
-void setup_pot_values() {
-  while (1) {
-    char buff[128] = "";
-    sprintf(buff, "pinch = %3d  wrist = %3d  elbow = %3d  waist = %3d",
-      analogRead(A0), 
-      analogRead(A1), 
-      analogRead(A2), 
-      analogRead(A3)
-      );
-    Serial.println(buff);
-  }
-}
-
-void setup_servo_values() {
-  outArm.writePinch(20);   // 80 = closed, 20 = open
-  outArm.writeWrist(150);  // back = 165, forward = 10, straight = 150
-  outArm.writeElbow(17);   // back = 165, forward = 1, vertical = 95, horizontal = 17
-  outArm.writeWaist(101);  // left = 7, right = 180, forward = 101
-
-  while (1);
-}
-
-// ==============================================================
 // mimic function
 
 void mimic() {
@@ -347,9 +303,22 @@ void initLED() {
 // 2 = green
 // 3 = orange
 // 
-void setLED(int value) {
-  digitalWrite(LED1, (value & 1) ? LOW : HIGH);
-  digitalWrite(LED2, (value & 2) ? LOW : HIGH);
+void setLED(int color) {
+  appState.ledColor = color;
+  digitalWrite(LED1, (color & 1) ? LOW : HIGH);
+  digitalWrite(LED2, (color & 2) ? LOW : HIGH);
+}
+
+void flashLED(int color, int color2, int count, int timing, bool restore) {
+  int origColor = appState.ledColor;
+  while (count-- != 0) {
+    setLED(color);
+    delay(timing);
+    setLED(color2);
+    delay(timing);
+  }
+  if (restore)
+    setLED(origColor);
 }
 
 // ==============================================================
@@ -376,4 +345,30 @@ int getButton() {
 void waitForButtonRelease() {
   while (!digitalRead(BUTTON))
     delay(5);
+}
+
+// ==============================================================
+// Manual calibration functions
+
+void setup_pot_values() {
+  while (1) {
+    char buff[128] = "";
+    sprintf(buff, "pinch = %3d  wrist = %3d  elbow = %3d  waist = %3d",
+      analogRead(A0), 
+      analogRead(A1), 
+      analogRead(A2), 
+      analogRead(A3)
+      );
+    Serial.println(buff);
+  }
+}
+
+void setup_servo_values() {
+  outArm.attachServos();
+  outArm.writePinch(20);   // 80 = closed, 20 = open
+  outArm.writeWrist(150);  // back = 165, forward = 10, straight = 150
+  outArm.writeElbow(17);   // back = 165, forward = 1, vertical = 95, horizontal = 17
+  outArm.writeWaist(101);  // left = 7, right = 180, forward = 101
+
+  while (1);
 }
