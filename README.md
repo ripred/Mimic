@@ -4,6 +4,8 @@
 
 Created January 2020 by Trent M. Wyatt
 
+[Video link](https://www.youtube.com/watch?v=EOwqZuc2aEc)
+
 ![](Mimic.png)
 
 + Box with two arms, each with 4 degrees of freedom: Waist, Elbow, Wrist, and Pincher.
