@@ -40,7 +40,6 @@ Control by using the button with "gestures":
   + Double Click and Hold:       Park the servo arm and save any recording to the EEPROM
 
 TODO:
- + Change on/off switch to DPDT to control both Vcc for logic and Vdd for servos
  + Add googly eyes to servo arm :-)
  + Add ability to play "Scissors/Rock/Paper" against the arm! :-)
  + Add mic and op-amp to have dance-party mode!
