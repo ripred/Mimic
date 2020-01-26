@@ -14,7 +14,9 @@ enum Mode { MIMIC, IDLE };
 
 void flashLED(int color, int color2 = OFF, int count = 5, int timing = 200, bool restore = false);
 
+
 // The AppState structure is used to hold various program state values
+// 
 struct AppState {
   unsigned
     ledColor      :  2,
@@ -30,16 +32,25 @@ struct AppState {
   }
 };
 
-// forward declaration for structure not defined until later
-struct Limits;
 
-// The Pos structure is used to hold the four values for an arm
+// The SerialPacket structure is used to hold Serial API command packets
+// 
+union SerialPacket {
+  struct {
+    byte cmd;
+    int value;
+  } fields;
+  byte data[sizeof(fields)];
+};
+
+
+// The Pos structure is used to hold the four values for a specific arm position
 struct Pos {
   unsigned
-    pinch : 10,
-    wrist : 10,
-    elbow : 10,
-    waist : 10;
+    pinch : 12, /* 0 - 4095 values */
+    wrist : 12,
+    elbow : 12,
+    waist : 12;
 
   Pos() {
     pinch = wrist = elbow = waist = 0;
@@ -51,7 +62,46 @@ struct Pos {
     elbow = elbowVal;
     waist = waistVal;
   }
+
+  Pos operator + (const Pos &rhs) {
+    return Pos(pinch + rhs.pinch, wrist + rhs.wrist, elbow + rhs.elbow, waist + rhs.waist);
+  }
+
+  Pos operator - (const Pos &rhs) {
+    return Pos(pinch - rhs.pinch, wrist - rhs.wrist, elbow - rhs.elbow, waist - rhs.waist);
+  }
+
+  Pos & operator += (const Pos &rhs) {
+    pinch += rhs.pinch;
+    wrist += rhs.wrist;
+    elbow += rhs.elbow;
+    waist += rhs.waist;
+
+    return *this;
+  }
+
+  Pos & operator -= (const Pos &rhs) {
+    pinch -= rhs.pinch;
+    wrist -= rhs.wrist;
+    elbow -= rhs.elbow;
+    waist -= rhs.waist;
+
+    return *this;
+  }
+
+  unsigned int maxDelta(const Pos &rhs) {
+    Pos delta = operator - (rhs);
+    unsigned int result = max(abs(delta.pinch), abs(delta.wrist));
+    result = max(result, abs(delta.elbow));
+    result = max(result, abs(delta.waist));
+
+    return result;
+  }
 };
+
+
+// forward declaration for structure not defined until later
+struct Limits;
 
 // The Arm structure is used to hold the four values for an arm
 // and to be able to clip the values to their allowed ranges
@@ -65,9 +115,9 @@ struct Arm : public Pos {
   Arm(const Arm &rhs) : Pos(rhs.pinch, rhs.wrist, rhs.elbow, rhs.waist)  {
   }
 
-  static uint16_t clip(uint16_t value, uint16_t limit1, uint16_t limit2) {
-    uint16_t minVal = min(limit1, limit2);
-    uint16_t maxVal = max(limit1, limit2);
+  static int16_t clip(int16_t value, int16_t limit1, int16_t limit2) {
+    int16_t minVal = min(limit1, limit2);
+    int16_t maxVal = max(limit1, limit2);
   
     if (value < minVal)
       value = minVal;
@@ -90,7 +140,7 @@ struct Arm : public Pos {
     return clip(dynamic_cast<Pos&>(limit1), dynamic_cast<Pos&>(limit2));
   }
 
-  Pos &clip(Limits &limits);
+  Arm &clip(Limits &limits);
 };
 
 
@@ -112,12 +162,13 @@ struct Limits {
 };
 
 
-Pos &Arm::clip(Limits &limits) {
+Arm &Arm::clip(Limits &limits) {
   return clip(limits.a, limits.b);
 }
 
 
 
+// The Node class is the base entry for a singly or doubly linked list
 template <class T>
 struct Node {
   T t;
@@ -141,6 +192,8 @@ struct Node {
 };
 
 
+// The LinkedList class allows for storing a linked list of any object type
+// 
 template <class T>
 struct LinkedList {
   Node<T> *head, *tail;
@@ -227,7 +280,6 @@ struct LinkedList {
     }
     return 0;
   }
-
 };
 
 #endif // #ifndef MIMIC_H_INCL

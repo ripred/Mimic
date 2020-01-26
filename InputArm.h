@@ -3,7 +3,7 @@
 
 #include "mimic.h"
 
-#define DEFAULT_SAMPLES   1
+#define DEFAULT_SAMPLES   4
 
 class InputArm : public Arm {
 private:

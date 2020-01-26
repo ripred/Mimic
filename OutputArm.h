@@ -4,23 +4,47 @@
 #include <Servo.h>
 #include "mimic.h"
 
+
 class OutputArm : public Arm {
 private:
 
-  OutputArm() :
-    Arm(),
-    iRange(iRange.a, iRange.b),
-    oRange(oRange.a, oRange.b)
-  {
+  OutputArm() = delete;
+
+  void writePinch(int value) {
+    pinch = clip(value, oRange.a.pinch, oRange.b.pinch);
+    if (last.pinch != pinch) {
+      pinchServo.writeMicroseconds(last.pinch = pinch);
+    }
   }
 
-protected:
+  void writeWrist(int value) {
+    wrist = clip(value, oRange.a.wrist, oRange.b.wrist);
+    if (last.wrist != wrist) {
+      wristServo.writeMicroseconds(last.wrist = wrist);
+    }
+  }
+
+  void writeElbow(int value) {
+    elbow = clip(value, oRange.a.elbow, oRange.b.elbow);
+    if (last.elbow != elbow) {
+      elbowServo.writeMicroseconds(last.elbow = elbow);
+    }
+  }
+
+  void writeWaist(int value) {
+    waist = clip(value, oRange.a.waist, oRange.b.waist);
+    if (last.waist != waist) {
+      waistServo.writeMicroseconds(last.waist = waist);
+    }
+  }
+
+public:
 
   uint8_t pinchPin, wristPin, elbowPin, waistPin;
   Servo pinchServo, wristServo, elbowServo, waistServo;
   Limits iRange;
   Limits oRange;
-  Pos last;
+  Pos last, target;
 
 public:
 
@@ -29,8 +53,7 @@ public:
     pinchPin(pinchPin),
     wristPin(wristPin),
     elbowPin(elbowPin),
-    waistPin(waistPin),
-    last(pinch, wrist, elbow, waist) {
+    waistPin(waistPin) {
 
     iRange = inLimits;
     oRange = outLimits;
@@ -39,23 +62,6 @@ public:
     pinMode(wristPin, OUTPUT);
     pinMode(elbowPin, OUTPUT);
     pinMode(waistPin, OUTPUT);
-  }
-
-  OutputArm & operator = (InputArm &arm) {
-    pinch = map(arm.pinch, iRange.a.pinch, iRange.b.pinch, oRange.a.pinch, oRange.b.pinch);
-    wrist = map(arm.wrist, iRange.a.wrist, iRange.b.wrist, oRange.a.wrist, oRange.b.wrist);
-    elbow = map(arm.elbow, iRange.a.elbow, iRange.b.elbow, oRange.a.elbow, oRange.b.elbow);
-    waist = map(arm.waist, iRange.a.waist, iRange.b.waist, oRange.a.waist, oRange.b.waist);
-
-    return *this;
-  }
-
-  OutputArm & operator = (Pos &pos) {
-    pinch = pos.pinch;
-    wrist = pos.wrist;
-    elbow = pos.elbow;
-    waist = pos.waist;
-    return *this;
   }
 
   // Attach the output pins to their servos
@@ -75,44 +81,58 @@ public:
     elbowServo.detach();
     waistServo.detach();
   }
-  
-  void writePinch(int value, int mS = 0) {
-    UNUSED(mS);
-    pinch = clip(value, oRange.a.pinch, oRange.b.pinch);
-    if (pinch != last.pinch) {
-      pinchServo.write(last.pinch = pinch);
-    }
+
+  // convert the position of an input arm to our local ranges
+  // 
+  OutputArm & operator = (InputArm &arm) {
+    pinch = map(arm.pinch, iRange.a.pinch, iRange.b.pinch, oRange.a.pinch, oRange.b.pinch);
+    wrist = map(arm.wrist, iRange.a.wrist, iRange.b.wrist, oRange.a.wrist, oRange.b.wrist);
+    elbow = map(arm.elbow, iRange.a.elbow, iRange.b.elbow, oRange.a.elbow, oRange.b.elbow);
+    waist = map(arm.waist, iRange.a.waist, iRange.b.waist, oRange.a.waist, oRange.b.waist);
+    target = *(dynamic_cast<Pos*>(this));
+
+    return *this;
   }
 
-  void writeWrist(const int &value, int mS = 0) {
-    UNUSED(mS);
-    wrist = clip(value, oRange.a.wrist, oRange.b.wrist);
-    if (last.wrist != wrist) {
-      wristServo.write(last.wrist = wrist);
-    }
+  // update our position to a specific position
+  // 
+  OutputArm & operator = (Pos &pos) {
+    target = *(dynamic_cast<Pos*>(this)) = pos;
+
+    return *this;
   }
 
-  void writeElbow(const int &value, int mS = 0) {
-    UNUSED(mS);
-    elbow = clip(value, oRange.a.elbow, oRange.b.elbow);
-    if (last.elbow != elbow) {
-      elbowServo.write(last.elbow = elbow);
-    }
+  void write() {
+    writePinch(pinch);
+    writeWrist(wrist);
+    writeElbow(elbow);
+    writeWaist(waist);
   }
 
-  void writeWaist(const int &value, int mS = 0) {
-    UNUSED(mS);
-    waist = clip(value, oRange.a.waist, oRange.b.waist);
-    if (last.waist != waist) {
-      waistServo.write(last.waist = waist);
-    }
+  void write(Pos &pos) {
+    operator = (pos);
+    write();
   }
 
-  void write(int mS = 0) {
-    writePinch(pinch, mS);
-    writeWrist(wrist, mS);
-    writeElbow(elbow, mS);
-    writeWaist(waist, mS);
+  void increment() {
+    if (pinch < target.pinch) pinch++;
+    else if (pinch > target.pinch) pinch--;
+
+    if (wrist < target.wrist) wrist++;
+    else if (wrist > target.wrist) wrist--;
+
+    if (elbow < target.elbow) elbow++;
+    else if (elbow > target.elbow) elbow--;
+
+    if (waist < target.waist) waist++;
+    else if (waist > target.waist) waist--;
+
+    write();
+  }
+
+  void increment(Pos &pos) {
+    target = pos;
+    increment();
   }
 
   // "Park" the output arm so it lays
@@ -122,15 +142,17 @@ public:
     static OutputArm *me = this;
     me = this;
     LinkedList<Pos> parkMoves;
-    parkMoves.addTail(Pos(20, 150, 95, 101));
-    parkMoves.addTail(Pos(20, 150, 95, 7));
-    parkMoves.addTail(Pos(20, 150, 17, 7));
-    parkMoves.addTail(Pos(20, 165, 1, 7));
+    //                    pinch wrist elbow waist
+    parkMoves.addTail(Pos(1050, 2100, 1450, 1582));
+    parkMoves.addTail(Pos(1050, 2100, 1450,  620));
+    parkMoves.addTail(Pos(1050, 2100,  580,  620));
+    parkMoves.addTail(Pos(1050, 2300,  450,  620));
 
+    attachServos();
     parkMoves.foreach([](Pos &pos) -> int {
-      *me = pos;
+      (*me) = pos;
       (*me).write();
-      delay(1500);
+      delay(1000);
       return 0;
     });
   }
