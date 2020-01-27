@@ -39,7 +39,7 @@
 |*|   Double Click and Hold: ......Park the servo arm and save any recording to the EEPROM
 |*| 
 |*| TODO:
-|*|  + Added Vcc voltageRead() function to determine the Vcc being used.  This affects the potential
+|*|  + Added readVcc() function to determine the Vcc being used.  This affects the potential
 |*|    across the potentiometers and gives different ranges of values depending on if Vcc
 |*|    is 5V (when powered by USB cable) vs when using a battery.
 |*|  - Use voltageRead() function to calibrate values read from the input arm so they are 
@@ -50,6 +50,7 @@
 |*|      when moving to a new set of positions so the deltas for each movement
 |*|      can be evenly spread across a given amount of time. This will allow
 |*|      further enhancement as a "playback speed" setting can then be added.
+|*| 
 |*|  - Add googly eyes to servo arm :-)
 |*|  - Add ability to play "Scissors/Rock/Paper" against the arm! :-)
 |*|  - Add mic and op-amp to have dance-party mode!
@@ -61,10 +62,13 @@
 
 #include <EEPROM.h>
 #include <SoftwareSerial.h>
+#include <string.h>
 #include "mimic.h"
 #include "InputArm.h"
 #include "OutputArm.h"
 #include "ButtonLib2.h"
+
+#define DEBUG_API
 
 // ---------------------------------------------------------------------------------
 // Project specific pin connections
@@ -93,38 +97,31 @@
 #define SSERIAL_RX    10
 #define SSERIAL_TX    8
 
-
 // ---------------------------------------------------------------------------------
 // Global variables
 
 // Potentiometer Ranges
 //                     pinch open      wrist down    elbow forward    waist left
-static Pos iRange1 = {     80,           650,           758,               87     };
+static Pos iRange1 = {     80,           650,            758,             87    };
 //                     pinch closed    wrist up      elbow back       waist right
-static Pos iRange2 = {    850,           100,               30,           660     };
+static Pos iRange2 = {    850,           100,             30,            660    };
 
 
 // Servo Ranges - **BY MICROSECONDS**
 //                     pinch open      wrist down    elbow forward    waist left
-static Pos oRange1 = {   1050,           650,              550,            550    };
+static Pos oRange1 = {   1050,           650,            550,            550    };
 //                     pinch closed    wrist up      elbow back       waist right
-static Pos oRange2 = {   1550,          2300,             2280,           2365    };
+static Pos oRange2 = {   1550,          2300,           2280,           2365    };
 
 static Limits iRange(iRange1, iRange2);
 static Limits oRange(oRange1, oRange2);
 
 static SoftwareSerial sserial(SSERIAL_RX, SSERIAL_TX);
 static InputArm inArm(POT1, POT2, POT3, POT4, iRange);
-static OutputArm outArm(S1_PIN, S2_PIN, S3_PIN, S4_PIN, iRange, oRange);
+static OutputArm outArm(S1_PIN, S2_PIN, S3_PIN, S4_PIN, oRange);
 static LinkedList<Pos> saved;
 static AppState appState;
 static int mimicType = 2;
-
-
-// ---------------------------------------------------------------------------------
-// Forward declarations
-
-void mimic(int type = mimicType);
 
 // ---------------------------------------------------------------------------------
 
@@ -147,7 +144,6 @@ void setup() {
   loadFromEeprom();
 
   setMode(IDLE);
-  setLED(GREEN);
 }
 
 
@@ -182,28 +178,80 @@ void loop() {
 }
 
 
+void emulateSApi() {
+  if (Serial.available() == 0) return;
+
+  if (outArm.pinch + outArm.wrist + outArm.elbow + outArm.waist == 0) {
+    // Start out in known valid position
+    Pos startPos(1050, 2100, 1450, 1582);
+    outArm.attach();
+    outArm.write(startPos);
+  }
+  outArm.attach();
+
+  // delay until number of serial bytes available settles:
+  int lastAvailable;
+  do {
+    lastAvailable = Serial.available();
+    delayMicroseconds(40000);
+  } while (Serial.available() != lastAvailable);
+
+  SerialPacket pkt;
+  char buff[16];
+
+  memset(buff, 0, sizeof(buff));
+  for (unsigned i=0; Serial.available() > 0 && i < sizeof(buff); i++) {
+    char c = Serial.read();
+    buff[i] = c >= ' ' ? c : 0;
+  }
+  buff[sizeof(buff) - 1] = 0;
+
+  switch(buff[0]) {
+    case 'A':   // write waist
+    case 'B':   // write elbow
+    case 'C':   // write wrist
+    case 'D':   // wrist pinch
+    case 'a':   // read waist
+    case 'b':   // read elbow
+    case 'c':   // read wrist
+    case 'd':   // read pinch
+    case 'R':   // Read saved from EEPROM 
+    case 'W':   // Write saved to EEPROM
+    case 'X':   // Clear saved
+    case 'Y':   // Add position to saved
+    case 'P':   // Playback
+    case 'Z':   // Stop playback
+    case 'p':   // Park arm
+    case 'M':   // Set Mode
+
+      pkt.fields.cmd = buff[0];
+      pkt.fields.value = atoi(buff + 1);
+      processPacket(pkt);
+      break;
+  }
+}
+
+
 // ==============================================================
 // main app functions
 
 void toggleMode() {
   if (appState.mode == IDLE) {
     setMode(MIMIC);
-    setLED(RED);
   } else 
   if (appState.mode == MIMIC) {
     setMode(IDLE);
-    setLED(GREEN);
   }
 }
 
 void startPlayback() {
-  outArm.attachServos();
+  outArm.attach();
   playback(1000);
   setMode(appState.mode);
 }
 
 void startRecord() {
-  outArm.attachServos();
+  outArm.attach();
   record();
   setMode(appState.mode);
 }
@@ -212,8 +260,7 @@ void parkArm() {
   outArm.park();
   setMode(IDLE);
   waitForButtonRelease();
-  flashLED(RED);
-  saveToEeprom();
+  flashLED(GREEN);
 
   // NOTE: we do this so if the user hits the button without turning the arm off
   // then we will naturally toggle the mode, in this case to the safe IDLE state
@@ -224,7 +271,8 @@ void parkArm() {
 // mimic function
 
 void mimic(int type) {
-  Pos pos1, pos;
+  Pos origPos, newPos;
+  int delta;
 
   switch (type) {
     default:
@@ -234,74 +282,70 @@ void mimic(int type) {
       break;
 
     case 1:
-      pos1 = *((Pos*)&outArm);
+      origPos = *((Pos*)&outArm);
       outArm = inArm.read();
-      pos = *((Pos*)&outArm);
-      *((Pos*)&outArm) = pos1;
+      newPos = *((Pos*)&outArm);
+      *((Pos*)&outArm) = origPos;
 
-      outArm.increment(pos);
+      outArm.increment(newPos);
       break;
 
     case 2:
-      pos1 = *((Pos*)&outArm);
+      origPos = *((Pos*)&outArm);
       outArm = inArm.read();
-      pos = *((Pos*)&outArm);
-      *((Pos*)&outArm) = pos1;
+      newPos = *((Pos*)&outArm);
+      *((Pos*)&outArm) = origPos;
 
-      if (pos.pinch < outArm.pinch) {
-        int delta = outArm.pinch - pos.pinch;
+      if (newPos.pinch < outArm.pinch) {
+        delta = outArm.pinch - newPos.pinch;
         if (delta > 1)
           outArm.pinch -= delta / 2;
         else
           outArm.pinch--;
-      } else
-      if (pos.pinch > outArm.pinch) {
-        int delta = pos.pinch - outArm.pinch;
+      } else if (newPos.pinch > outArm.pinch) {
+        delta = newPos.pinch - outArm.pinch;
         if (delta > 1)
           outArm.pinch += delta / 2;
         else
           outArm.pinch++;
       }
 
-      if (pos.wrist < outArm.wrist) {
-        int delta = outArm.wrist - pos.wrist;
+      if (newPos.wrist < outArm.wrist) {
+        delta = outArm.wrist - newPos.wrist;
         if (delta > 1)
           outArm.wrist -= delta / 2;
         else
           outArm.wrist--;
-      } else
-      if (pos.wrist > outArm.wrist) {
-        int delta = pos.wrist - outArm.wrist;
+      } else if (newPos.wrist > outArm.wrist) {
+        delta = newPos.wrist - outArm.wrist;
         if (delta > 1)
           outArm.wrist += delta / 2;
         else
           outArm.wrist++;
       }
 
-      if (pos.elbow < outArm.elbow) {
-        int delta = outArm.elbow - pos.elbow;
+      if (newPos.elbow < outArm.elbow) {
+        delta = outArm.elbow - newPos.elbow;
         if (delta > 1)
           outArm.elbow -= delta / 2;
         else
           outArm.elbow--;
-      } else
-      if (pos.elbow > outArm.elbow) {
-        int delta = pos.elbow - outArm.elbow;
+      } else if (newPos.elbow > outArm.elbow) {
+        delta = newPos.elbow - outArm.elbow;
         if (delta > 1)
           outArm.elbow += delta / 2;
         else
           outArm.elbow++;
       }
 
-      if (pos.waist < outArm.waist) {
-        int delta = outArm.waist - pos.waist;
+      if (newPos.waist < outArm.waist) {
+        delta = outArm.waist - newPos.waist;
         if (delta > 1)
           outArm.waist -= delta / 2;
         else
           outArm.waist--;
-      } else
-      if (pos.waist > outArm.waist) {
-        int delta = pos.waist - outArm.waist;
+      } else if (newPos.waist > outArm.waist) {
+        delta = newPos.waist - outArm.waist;
         if (delta > 1)
           outArm.waist += delta / 2;
         else
@@ -321,12 +365,12 @@ void setMode(int m) {
   switch (appState.mode) {
     case IDLE:
     setLED(GREEN);
-    outArm.detachServos();
+    outArm.detach();
     break;
 
     case MIMIC:
-    setLED(GREEN);
-    outArm.attachServos();
+    setLED(RED);
+    outArm.attach();
     break;
   }
 }
@@ -342,6 +386,7 @@ void record() {
   setLED(ORANGE);
 
   do {
+    processSSerial();
     mimic(mimicType);
     button = getButton();
     switch (button) {
@@ -356,8 +401,11 @@ void record() {
 
   setLED(OFF);
   waitForButtonRelease();
+
+  flashLED(RED);
+  saveToEeprom();
+
   setMode(IDLE);
-  setLED(GREEN);
 }
 
 
@@ -368,20 +416,21 @@ void playback(int mS) {
   }
 
   setLED(GREEN);
-  appState.stopPlayback = false;
+  appState.stopPlayback = 0;
   appState.playbackPause = mS;
 
-  while (!appState.stopPlayback) {
+  while (appState.stopPlayback == 0) {
     saved.foreach([](Pos &p) -> int {
-      if (!appState.stopPlayback) {
+      if (appState.stopPlayback == 0) {
         outArm = p;
         outArm.write();
         setLED(RED);
         if (0 != appState.playbackPause) {
           unsigned long now = millis();
-          while (millis() < now + appState.playbackPause) {
+          while ((millis() < now + appState.playbackPause) && (appState.stopPlayback == 0)) {
+            processSSerial();
             if (getButton() != NOT_PRESSED) {
-              appState.stopPlayback = true;
+              appState.stopPlayback = 1;
               return 1;
             }
             appState.playbackPause = map(inArm.readPinch(), iRange2.pinch, iRange1.pinch, 400, 1500);
@@ -396,7 +445,6 @@ void playback(int mS) {
   setLED(OFF);
   waitForButtonRelease();
   setMode(IDLE);
-  setLED(GREEN);
 }
 
 // ==============================================================
@@ -466,7 +514,7 @@ void setLED(int color) {
   digitalWrite(LED2, (color & 2) ? LOW : HIGH);
 }
 
-void flashLED(int color, int color2, int count, int timing, bool restore) {
+void flashLED(LedColor color, LedColor color2, int count, int timing, bool restore) {
   int origColor = appState.ledColor;
   while (count-- != 0) {
     setLED(color);
@@ -504,7 +552,7 @@ void waitForButtonRelease() {
 }
 
 // ==============================================================
-// SoftwareSerial control port functions
+// Software Serial control port functions
 
 void initSSerial(int baud) {
   sserial.end();
@@ -523,25 +571,25 @@ void processPacket(SerialPacket &pkt) {
       outArm.waist = pkt.fields.value;
       outArm.write();
       break;
-  
+
     // set output elbow
     case 'B':
       outArm.elbow = pkt.fields.value;
       outArm.write();
       break;
-  
+
     // set output wrist
     case 'C':
       outArm.wrist = pkt.fields.value;
       outArm.write();
       break;
-  
+
     // set output pinch
     case 'D':
       outArm.pinch = pkt.fields.value;
       outArm.write();
       break;
-  
+
     // get input waist                    // Read Input Arm API
     case 'a':
       inArm.read();
@@ -549,7 +597,7 @@ void processPacket(SerialPacket &pkt) {
       sserial.write(inArm.waist & 0xFF);
       sserial.write((inArm.waist >> 8) & 0xFF);
       break;
-  
+
     // get input elbow
     case 'b':
       inArm.read();
@@ -557,7 +605,7 @@ void processPacket(SerialPacket &pkt) {
       sserial.write(inArm.elbow & 0xFF);
       sserial.write((inArm.elbow >> 8) & 0xFF);
       break;
-  
+
     // get input wrist
     case 'c':
       inArm.read();
@@ -565,7 +613,7 @@ void processPacket(SerialPacket &pkt) {
       sserial.write(inArm.wrist & 0xFF);
       sserial.write((inArm.wrist >> 8) & 0xFF);
       break;
-  
+
     // get input pinch
     case 'd':
       inArm.read();
@@ -584,19 +632,43 @@ void processPacket(SerialPacket &pkt) {
       saved.addTail(outArm);
       break;
 
-      // Write recorded positions to EEPROM
+    // Write recorded positions to EEPROM
     case 'W':
       saveToEeprom();
       break;
 
-      // Read recorded positions from EEPROM
+    // Read recorded positions from EEPROM
     case 'R':
       loadFromEeprom();
+      break;
+
+    // Start playback of recorded positions
+    case 'P':
+      startPlayback();
+      break;
+
+    // Stop playback
+    case 'Z':
+      appState.stopPlayback = 1;
+      break;
+
+    // Park arm
+    case 'p':
+      parkArm();
+      break;
+
+    // Set mode
+    case 'M':
+      setMode(pkt.fields.value);
       break;
   }
 }
 
 void processSSerial() {
+#ifdef DEBUG_API
+  emulateSApi();
+#endif  
+
   if (sserial.available() < (int) sizeof(SerialPacket))
     return;
 
@@ -651,7 +723,7 @@ long readVcc() {
 
 void setup_pot_values() {
   while (1) {
-    char buff[128] = "";
+    char buff[64] = "";
     sprintf(buff, "pinch = %3d  wrist = %3d  elbow = %3d  waist = %3d",
       analogRead(A0), 
       analogRead(A1), 
@@ -672,10 +744,10 @@ void setup_servo_values() {
   setLED(RED);
 
   // Do one servo at a time so we can keep all of them detached (hopefully lower power use)
-  outArm.detachServos();
+  outArm.detach();
 
-  Serial.println("Manual Servo Calibration\n");
-  Serial.println("Adjust by sending < or D for down, > or U for up.\n");
+  Serial.println(F("Manual Servo Calibration\n"));
+  Serial.println(F("Adjust by sending < or D for down, > or U for up.\n"));
 
   struct CurServo {
     int uS;
@@ -717,11 +789,11 @@ void setup_servo_values() {
     if (servo.uS != servo.usLast) {
       setLED(GREEN);
       servo.servo.writeMicroseconds(servo.usLast = servo.uS);
-      Serial.print("Setting ");
+      Serial.print(F("Setting "));
       Serial.print(servo.name);
-      Serial.print(" to ");
+      Serial.print(F(" to "));
       Serial.print(servo.uS, DEC);
-      Serial.println(" micro seconds");
+      Serial.println(F(" micro seconds"));
       unsigned long timer = millis() + 500;
       while (millis() < timer) 
         ;

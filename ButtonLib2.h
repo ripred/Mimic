@@ -29,7 +29,7 @@
 
 #define  KEYDBDELAY               36                // original bell labs standard phone push button debounce delay in mS
 #define  KEYLONGDELAY             (KEYDBDELAY * 20) // how long to consider a pressed button a "long press" versus a "short press"
-#define  ALLOWED_MULTIPRESS_DELAY (KEYDBDELAY * 7)  // the amount of time allowed between multiple "taps" to be considered part of the last "tap"
+#define  ALLOWED_MULTIPRESS_DELAY (KEYDBDELAY * 6)  // the amount of time allowed between multiple "taps" to be considered part of the last "tap"
 
 typedef void (*ButtonPressCallback)(const char pin, const char state);
 

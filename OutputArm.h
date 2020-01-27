@@ -6,58 +6,15 @@
 
 
 class OutputArm : public Arm {
-private:
+public:
+
+  Servo pinchServo, wristServo, elbowServo, waistServo;
+  Pos last, target;
 
   OutputArm() = delete;
 
-  void writePinch(int value) {
-    pinch = clip(value, oRange.a.pinch, oRange.b.pinch);
-    if (last.pinch != pinch) {
-      pinchServo.writeMicroseconds(last.pinch = pinch);
-    }
-  }
-
-  void writeWrist(int value) {
-    wrist = clip(value, oRange.a.wrist, oRange.b.wrist);
-    if (last.wrist != wrist) {
-      wristServo.writeMicroseconds(last.wrist = wrist);
-    }
-  }
-
-  void writeElbow(int value) {
-    elbow = clip(value, oRange.a.elbow, oRange.b.elbow);
-    if (last.elbow != elbow) {
-      elbowServo.writeMicroseconds(last.elbow = elbow);
-    }
-  }
-
-  void writeWaist(int value) {
-    waist = clip(value, oRange.a.waist, oRange.b.waist);
-    if (last.waist != waist) {
-      waistServo.writeMicroseconds(last.waist = waist);
-    }
-  }
-
-public:
-
-  uint8_t pinchPin, wristPin, elbowPin, waistPin;
-  Servo pinchServo, wristServo, elbowServo, waistServo;
-  Limits iRange;
-  Limits oRange;
-  Pos last, target;
-
-public:
-
-  OutputArm(int pinchPin, int wristPin, int elbowPin, int waistPin, Limits &inLimits, Limits &outLimits) :
-    Arm(),
-    pinchPin(pinchPin),
-    wristPin(wristPin),
-    elbowPin(elbowPin),
-    waistPin(waistPin) {
-
-    iRange = inLimits;
-    oRange = outLimits;
-
+  OutputArm(int pinch_pin, int wrist_pin, int elbow_pin, int waist_pin, Limits &limits) :
+    Arm(pinch_pin, wrist_pin, elbow_pin, waist_pin, limits) {
     pinMode(pinchPin, OUTPUT);
     pinMode(wristPin, OUTPUT);
     pinMode(elbowPin, OUTPUT);
@@ -66,7 +23,7 @@ public:
 
   // Attach the output pins to their servos
   // 
-  void attachServos() {
+  void attach() {
     pinchServo.attach(pinchPin);
     wristServo.attach(wristPin);
     elbowServo.attach(elbowPin);
@@ -75,20 +32,18 @@ public:
 
   // Detach the output pins from their servos 
   // 
-  void detachServos() {
+  void detach() {
     pinchServo.detach();
     wristServo.detach();
     elbowServo.detach();
     waistServo.detach();
   }
 
-  // convert the position of an input arm to our local ranges
-  // 
-  OutputArm & operator = (InputArm &arm) {
-    pinch = map(arm.pinch, iRange.a.pinch, iRange.b.pinch, oRange.a.pinch, oRange.b.pinch);
-    wrist = map(arm.wrist, iRange.a.wrist, iRange.b.wrist, oRange.a.wrist, oRange.b.wrist);
-    elbow = map(arm.elbow, iRange.a.elbow, iRange.b.elbow, oRange.a.elbow, oRange.b.elbow);
-    waist = map(arm.waist, iRange.a.waist, iRange.b.waist, oRange.a.waist, oRange.b.waist);
+  Arm & operator = (Arm &arm) {
+    pinch = map(arm.pinch, arm.range.a.pinch, arm.range.b.pinch, range.a.pinch, range.b.pinch);
+    wrist = map(arm.wrist, arm.range.a.wrist, arm.range.b.wrist, range.a.wrist, range.b.wrist);
+    elbow = map(arm.elbow, arm.range.a.elbow, arm.range.b.elbow, range.a.elbow, range.b.elbow);
+    waist = map(arm.waist, arm.range.a.waist, arm.range.b.waist, range.a.waist, range.b.waist);
     target = *(dynamic_cast<Pos*>(this));
 
     return *this;
@@ -100,6 +55,34 @@ public:
     target = *(dynamic_cast<Pos*>(this)) = pos;
 
     return *this;
+  }
+
+  void writePinch(int value) {
+    pinch = clip(value, range.a.pinch, range.b.pinch);
+    if (last.pinch != pinch) {
+      pinchServo.writeMicroseconds(last.pinch = pinch);
+    }
+  }
+
+  void writeWrist(int value) {
+    wrist = clip(value, range.a.wrist, range.b.wrist);
+    if (last.wrist != wrist) {
+      wristServo.writeMicroseconds(last.wrist = wrist);
+    }
+  }
+
+  void writeElbow(int value) {
+    elbow = clip(value, range.a.elbow, range.b.elbow);
+    if (last.elbow != elbow) {
+      elbowServo.writeMicroseconds(last.elbow = elbow);
+    }
+  }
+
+  void writeWaist(int value) {
+    waist = clip(value, range.a.waist, range.b.waist);
+    if (last.waist != waist) {
+      waistServo.writeMicroseconds(last.waist = waist);
+    }
   }
 
   void write() {
@@ -148,9 +131,9 @@ public:
     parkMoves.addTail(Pos(1050, 2100,  580,  620));
     parkMoves.addTail(Pos(1050, 2300,  450,  620));
 
-    attachServos();
+    attach();
     parkMoves.foreach([](Pos &pos) -> int {
-      (*me) = pos;
+      *me = pos;
       (*me).write();
       delay(1000);
       return 0;

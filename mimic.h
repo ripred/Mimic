@@ -4,16 +4,14 @@
 // ------------------------------------------------------------------------
 // Magic numbers and helpful macros
 
-enum LEDCOLOR { OFF, RED, GREEN, ORANGE };
-
+enum LedColor { OFF, RED, GREEN, ORANGE };
 enum Mode { MIMIC, IDLE };
 
 #ifndef UNUSED
 #define UNUSED(var) do { (void) var; } while (0);
 #endif
 
-void flashLED(int color, int color2 = OFF, int count = 5, int timing = 200, bool restore = false);
-
+void flashLED(LedColor color, LedColor color2 = OFF, int count = 5, int timing = 200, bool restore = false);
 
 // The AppState structure is used to hold various program state values
 // 
@@ -22,7 +20,7 @@ struct AppState {
     ledColor      :  2,
     mode          :  1,
     stopPlayback  :  1,
-    playbackPause : 13;
+    playbackPause : 12;
 
   AppState() {
     ledColor = OFF;
@@ -34,7 +32,6 @@ struct AppState {
 
 
 // The SerialPacket structure is used to hold Serial API command packets
-// 
 union SerialPacket {
   struct {
     byte cmd;
@@ -47,7 +44,7 @@ union SerialPacket {
 // The Pos structure is used to hold the four values for a specific arm position
 struct Pos {
   unsigned
-    pinch : 12, /* 0 - 4095 values */
+    pinch : 12, /* 0 - 4095 values. Adjust as needed */
     wrist : 12,
     elbow : 12,
     waist : 12;
@@ -56,63 +53,48 @@ struct Pos {
     pinch = wrist = elbow = waist = 0;
   }
 
-  Pos(int pinchVal, int wristVal, int elbowVal, int waistVal) {
-    pinch = pinchVal;
-    wrist = wristVal;
-    elbow = elbowVal;
-    waist = waistVal;
-  }
-
-  Pos operator + (const Pos &rhs) {
-    return Pos(pinch + rhs.pinch, wrist + rhs.wrist, elbow + rhs.elbow, waist + rhs.waist);
-  }
-
-  Pos operator - (const Pos &rhs) {
-    return Pos(pinch - rhs.pinch, wrist - rhs.wrist, elbow - rhs.elbow, waist - rhs.waist);
-  }
-
-  Pos & operator += (const Pos &rhs) {
-    pinch += rhs.pinch;
-    wrist += rhs.wrist;
-    elbow += rhs.elbow;
-    waist += rhs.waist;
-
-    return *this;
-  }
-
-  Pos & operator -= (const Pos &rhs) {
-    pinch -= rhs.pinch;
-    wrist -= rhs.wrist;
-    elbow -= rhs.elbow;
-    waist -= rhs.waist;
-
-    return *this;
-  }
-
-  unsigned int maxDelta(const Pos &rhs) {
-    Pos delta = operator - (rhs);
-    unsigned int result = max(abs(delta.pinch), abs(delta.wrist));
-    result = max(result, abs(delta.elbow));
-    result = max(result, abs(delta.waist));
-
-    return result;
+  Pos(int pinchVal, int wristVal, int elbowVal, int waistVal) :
+    pinch(pinchVal),
+    wrist(wristVal),
+    elbow(elbowVal),
+    waist(waistVal) {
   }
 };
 
 
-// forward declaration for structure not defined until later
-struct Limits;
+// The Limits structure holds the beginning
+// and ending range for each value.  Used to
+// clip the values to their allowed ranges.
+//
+struct Limits {
+  Pos a, b;
 
-// The Arm structure is used to hold the four values for an arm
-// and to be able to clip the values to their allowed ranges
+  Limits() {
+  }
+
+  Limits(Pos &limit1, Pos &limit2) : a(limit1), b(limit2) {
+  }
+};
+
+
+// The Arm structure is used to represent and input or output arm
+// It can hold 4 values which represent either the input values
+// or the output values depending on use.
+// It can clip the values to their allowed ranges
+// It can store the pins used to interface with the reading or writing of the arm values
+// 
 struct Arm : public Pos {
-  Arm() : Pos() {
-  }
+  unsigned pinchPin, wristPin, elbowPin, waistPin;
+  Limits range;
 
-  Arm(int pinchVal, int wristVal, int elbowVal, int waistVal) : Pos(pinchVal, wristVal, elbowVal, waistVal) {
-  }
+  Arm() = delete;
 
-  Arm(const Arm &rhs) : Pos(rhs.pinch, rhs.wrist, rhs.elbow, rhs.waist)  {
+  Arm(int pinch_pin, int wrist_pin, int elbow_pin, int waist_pin, Limits &limits) :
+    pinchPin(pinch_pin),
+    wristPin(wrist_pin),
+    elbowPin(elbow_pin),
+    waistPin(waist_pin),
+    range(limits) {
   }
 
   static int16_t clip(int16_t value, int16_t limit1, int16_t limit2) {
@@ -126,46 +108,7 @@ struct Arm : public Pos {
   
     return value;
   }
-  
-  Arm &clip(Pos &limit1, Pos &limit2) {
-    pinch = clip(pinch, limit1.pinch, limit2.pinch);
-    wrist = clip(wrist, limit1.wrist, limit2.wrist);
-    elbow = clip(elbow, limit1.elbow, limit2.elbow);
-    waist = clip(waist, limit1.waist, limit2.waist);
-
-    return *this;
-  }
-
-  Arm &clip(Arm &limit1, Arm &limit2) {
-    return clip(dynamic_cast<Pos&>(limit1), dynamic_cast<Pos&>(limit2));
-  }
-
-  Arm &clip(Limits &limits);
 };
-
-
-// the Limits structure holds the beginning
-// and ending range for each value.  Used to
-// clip the values to their allowed ranges.
-//
-struct Limits {
-  Pos a, b;
-
-  Limits() {
-  }
-
-  Limits(Pos &limit1, Pos &limit2) : a(limit1), b(limit2) {
-  }
-
-  Limits(Arm &limit1, Arm &limit2) : a(limit1), b(limit2) {
-  }
-};
-
-
-Arm &Arm::clip(Limits &limits) {
-  return clip(limits.a, limits.b);
-}
-
 
 
 // The Node class is the base entry for a singly or doubly linked list
