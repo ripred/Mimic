@@ -109,9 +109,9 @@ static Pos iRange2 = {    850,           100,             30,            660    
 
 // Servo Ranges - **BY MICROSECONDS**
 //                     pinch open      wrist down    elbow forward    waist left
-static Pos oRange1 = {   1050,           650,            550,            550    };
+static Pos oRange1 = {    800,           650,            550,            550    };
 //                     pinch closed    wrist up      elbow back       waist right
-static Pos oRange2 = {   1550,          2300,           2280,           2365    };
+static Pos oRange2 = {   1500,          2300,           2280,           2365    };
 
 static Limits iRange(iRange1, iRange2);
 static Limits oRange(oRange1, oRange2);
@@ -121,17 +121,14 @@ static InputArm inArm(POT1, POT2, POT3, POT4, iRange);
 static OutputArm outArm(S1_PIN, S2_PIN, S3_PIN, S4_PIN, oRange);
 static LinkedList<Pos> saved;
 static AppState appState;
-static int mimicType = 2;
 
 // ---------------------------------------------------------------------------------
 
 void setup() {
   initSerial();
   initSSerial(9600);
-
   initLED();
   setLED(OFF);
-
   set_button_input(BUTTON);
 
 // Uncomment to manually set up the potentiometer limits
@@ -142,6 +139,8 @@ void setup() {
 
   // load last saved movements from EEPROM
   loadFromEeprom();
+
+  outArm.setMode(IncrementHalf);
 
   setMode(IDLE);
 }
@@ -173,7 +172,7 @@ void loop() {
   }
 
   if (appState.mode == MIMIC) {
-    mimic(mimicType);
+    mimic();
   }
 }
 
@@ -270,91 +269,9 @@ void parkArm() {
 // ==============================================================
 // mimic function
 
-void mimic(int type) {
-  Pos origPos, newPos;
-  int delta;
-
-  switch (type) {
-    default:
-    case 0:
-      outArm = inArm.read();
-      outArm.write();
-      break;
-
-    case 1:
-      origPos = *((Pos*)&outArm);
-      outArm = inArm.read();
-      newPos = *((Pos*)&outArm);
-      *((Pos*)&outArm) = origPos;
-
-      outArm.increment(newPos);
-      break;
-
-    case 2:
-      origPos = *((Pos*)&outArm);
-      outArm = inArm.read();
-      newPos = *((Pos*)&outArm);
-      *((Pos*)&outArm) = origPos;
-
-      if (newPos.pinch < outArm.pinch) {
-        delta = outArm.pinch - newPos.pinch;
-        if (delta > 1)
-          outArm.pinch -= delta / 2;
-        else
-          outArm.pinch--;
-      } else if (newPos.pinch > outArm.pinch) {
-        delta = newPos.pinch - outArm.pinch;
-        if (delta > 1)
-          outArm.pinch += delta / 2;
-        else
-          outArm.pinch++;
-      }
-
-      if (newPos.wrist < outArm.wrist) {
-        delta = outArm.wrist - newPos.wrist;
-        if (delta > 1)
-          outArm.wrist -= delta / 2;
-        else
-          outArm.wrist--;
-      } else if (newPos.wrist > outArm.wrist) {
-        delta = newPos.wrist - outArm.wrist;
-        if (delta > 1)
-          outArm.wrist += delta / 2;
-        else
-          outArm.wrist++;
-      }
-
-      if (newPos.elbow < outArm.elbow) {
-        delta = outArm.elbow - newPos.elbow;
-        if (delta > 1)
-          outArm.elbow -= delta / 2;
-        else
-          outArm.elbow--;
-      } else if (newPos.elbow > outArm.elbow) {
-        delta = newPos.elbow - outArm.elbow;
-        if (delta > 1)
-          outArm.elbow += delta / 2;
-        else
-          outArm.elbow++;
-      }
-
-      if (newPos.waist < outArm.waist) {
-        delta = outArm.waist - newPos.waist;
-        if (delta > 1)
-          outArm.waist -= delta / 2;
-        else
-          outArm.waist--;
-      } else if (newPos.waist > outArm.waist) {
-        delta = newPos.waist - outArm.waist;
-        if (delta > 1)
-          outArm.waist += delta / 2;
-        else
-          outArm.waist++;
-      }
-
-      outArm.write();
-      break;
-  }
+void mimic(void) {
+  outArm = inArm.read();
+  outArm.write();
 }
 
 // ==============================================================
@@ -387,7 +304,7 @@ void record() {
 
   do {
     processSSerial();
-    mimic(mimicType);
+    mimic();
     button = getButton();
     switch (button) {
       case SINGLE_PRESS_SHORT:
@@ -419,27 +336,21 @@ void playback(int mS) {
   appState.stopPlayback = 0;
   appState.playbackPause = mS;
 
-  while (appState.stopPlayback == 0) {
-    saved.foreach([](Pos &p) -> int {
-      if (appState.stopPlayback == 0) {
-        outArm = p;
-        outArm.write();
-        setLED(RED);
-        if (0 != appState.playbackPause) {
-          unsigned long now = millis();
-          while ((millis() < now + appState.playbackPause) && (appState.stopPlayback == 0)) {
-            processSSerial();
-            if (getButton() != NOT_PRESSED) {
-              appState.stopPlayback = 1;
-              return 1;
-            }
-            appState.playbackPause = map(inArm.readPinch(), iRange2.pinch, iRange1.pinch, 400, 1500);
-          }
-        }
-        setLED(GREEN);
+  Node<Pos> *ptr = saved.head;
+  while ((ptr != nullptr) && (appState.stopPlayback == 0)) {
+    outArm = ptr->t;
+    outArm.write();
+    setLED(RED);
+    unsigned long now = millis();
+    while ((millis() < now + appState.playbackPause) && (appState.stopPlayback == 0)) {
+      processSSerial();
+      if (getButton() != NOT_PRESSED) {
+        appState.stopPlayback = 1;
+        break;
       }
-      return 0;
-    });
+      appState.playbackPause = map(inArm.readPinch(), iRange2.pinch, iRange1.pinch, 400, 1500);
+    }
+    ptr = ptr->next;
   }
 
   setLED(OFF);
@@ -450,19 +361,37 @@ void playback(int mS) {
 // ==============================================================
 // EEPROM functions
 
+
+
+//    Sketch uses 12708 bytes (41%) of program storage space. Maximum is 30720 bytes.
+//    Global variables use 508 bytes (24%) of dynamic memory, leaving 1540 bytes for local variables. Maximum is 2048 bytes.
+// 
+// 
+//    Sketch uses 12604 bytes (41%) of program storage space. Maximum is 30720 bytes.
+//    Global variables use 496 bytes (24%) of dynamic memory, leaving 1552 bytes for local variables. Maximum is 2048 bytes.
+// 
+// 
+//    Sketch uses 12656 bytes (41%) of program storage space. Maximum is 30720 bytes.
+//    Global variables use 496 bytes (24%) of dynamic memory, leaving 1552 bytes for local variables. Maximum is 2048 bytes.
+// 
+// 
+//    Sketch uses 12660 bytes (41%) of program storage space. Maximum is 30720 bytes.
+//    Global variables use 496 bytes (24%) of dynamic memory, leaving 1552 bytes for local variables. Maximum is 2048 bytes.
+// 
+// 
+//    Sketch uses 14364 bytes (46%) of program storage space. Maximum is 30720 bytes.
+//    Global variables use 530 bytes (25%) of dynamic memory, leaving 1518 bytes for local variables. Maximum is 2048 bytes.
+
+
 void saveToEeprom() {
-  static int eepromCount;
-  eepromCount = 0;
-  // use C++11 lambda function to save each position
-  saved.foreach(
-    // Lambda expression begins
-    [](Pos &r) -> int {
-      EEPROM.put(sizeof(eepromCount) + eepromCount * sizeof(Pos), r);
-      eepromCount++;
-      return 0;
-    } // end of lambda expression
-  );
-  EEPROM.put(0, eepromCount);
+  int count = 0;
+  Node<Pos> *ptr = saved.head;
+  while (ptr != nullptr) {
+    EEPROM.put(sizeof(count) + count * sizeof(Pos), ptr->t);
+    ptr = ptr->next;
+    count++;
+  }
+  EEPROM.put(0, count);
 }
 
 void loadFromEeprom() {

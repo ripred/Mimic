@@ -214,15 +214,6 @@ struct LinkedList {
     return head;
   }
 
-  int foreach(int (*func)(T &)) {
-    Node<T> *p = head;
-    while (p != nullptr) {
-      if (func(p->t) != 0)
-        return 1;
-      p = p->next;
-    }
-    return 0;
-  }
 };
 
 #endif // #ifndef MIMIC_H_INCL
