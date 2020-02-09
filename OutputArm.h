@@ -15,8 +15,9 @@ public:
 
   Servo pinchServo, wristServo, elbowServo, waistServo;
   Pos last, target;
-  float pinchInc, wristInc, elbowInc, waistInc;
-  float pinchPos, wristPos, elbowPos, waistPos;
+  double pinchInc, wristInc, elbowInc, waistInc;
+  double pinchPos, wristPos, elbowPos, waistPos;
+  uint32_t lastUpdate;
 
   OutputArm(void) = delete;
 
@@ -32,9 +33,12 @@ public:
     pinchPos = target.pinch = pinch = range.a.pinch;  // set pincher to wide open, not the midpoint like the others
     wristPos = target.wrist = wrist = ((range.b.wrist - range.a.wrist) / 2) + range.a.wrist;
     elbowPos = target.elbow = elbow = ((range.b.elbow - range.a.elbow) / 2) + range.a.elbow;
-    waistPos = target.waist = waist = ((range.b.waist - range.a.waist) / 2) + range.a.waist;
+//  waistPos = target.waist = waist = ((range.b.waist - range.a.waist) / 2) + range.a.waist;
+    waistPos = target.waist = waist = 1582;
+
 
     pinchInc = wristInc = elbowInc = waistInc = 1;
+    lastUpdate = micros();
   }
 
   // Attach the output pins to their servos
@@ -61,6 +65,8 @@ public:
     target.elbow = map(arm.elbow, arm.range.a.elbow, arm.range.b.elbow, range.a.elbow, range.b.elbow);
     target.waist = map(arm.waist, arm.range.a.waist, arm.range.b.waist, range.a.waist, range.b.waist);
 
+    pinchInc = wristInc = elbowInc = waistInc = 1.0;
+
     return *this;
   }
 
@@ -68,6 +74,8 @@ public:
   //
   OutputArm & operator = (Pos &pos) {
     target = pos;
+
+    pinchInc = wristInc = elbowInc = waistInc = 1.0;
 
     return *this;
   }
@@ -89,9 +97,10 @@ public:
   // continually updating the output position if necessary
   //
   void delay(int ms) {
-    unsigned long int timer = millis() + ms;
-    while (millis() < timer)
+    uint32_t timer = millis() + ms;
+    while (millis() < timer) {
       write();
+    }
   }
 
   // Update the servos towards the target position
@@ -99,95 +108,96 @@ public:
   void write(void) {
     switch (mode) {
       case Immediate:
-        pinch = target.pinch;
-        wrist = target.wrist;
-        elbow = target.elbow;
-        waist = target.waist;
+        *(dynamic_cast<Pos*>(this)) = target;
         break;
 
       case Increment1:
-        if (pinch < target.pinch)
-          pinch++;
-        else if (pinch > target.pinch)
-          pinch--;
-        if (wrist < target.wrist)
-          wrist++;
-        else if (wrist > target.wrist)
-          wrist--;
-        if (elbow < target.elbow)
-          elbow++;
-        else if (elbow > target.elbow)
-          elbow--;
-        if (waist < target.waist)
-          waist++;
-        else if (waist > target.waist)
-          waist--;
+        pinch = (pinch < target.pinch) ? pinch + 1 : (pinch > target.pinch) ? pinch - 1 : pinch;
+        wrist = (wrist < target.wrist) ? wrist + 1 : (wrist > target.wrist) ? wrist - 1 : wrist;
+        elbow = (elbow < target.elbow) ? elbow + 1 : (elbow > target.elbow) ? elbow - 1 : elbow;
+        waist = (waist < target.waist) ? waist + 1 : (waist > target.waist) ? waist - 1 : waist;
         break;
 
       case IncrementHalf:
-        if (pinch < target.pinch)
-          pinch += (target.pinch - pinch) / 2;
-        else if (pinch > target.pinch)
-          pinch -= (pinch - target.pinch) / 2;
-        if (wrist < target.wrist)
-          wrist += (target.wrist - wrist) / 2;
-        else if (wrist > target.wrist)
-          wrist -= (wrist - target.wrist) / 2;
-        if (elbow < target.elbow)
-          elbow += (target.elbow - elbow) / 2;
-        else if (elbow > target.elbow)
-          elbow -= (elbow - target.elbow) / 2;
-        if (waist < target.waist)
-          waist += (target.waist - waist) / 2;
-        else if (waist > target.waist)
-          waist -= (waist - target.waist) / 2;
+        pinch = (pinch < target.pinch) ? (pinch + ((target.pinch - pinch) / 2)) : (pinch > target.pinch) ? (pinch - ((pinch - target.pinch) / 2)) : pinch;
+        wrist = (wrist < target.wrist) ? (wrist + ((target.wrist - wrist) / 2)) : (wrist > target.wrist) ? (wrist - ((wrist - target.wrist) / 2)) : wrist;
+        elbow = (elbow < target.elbow) ? (elbow + ((target.elbow - elbow) / 2)) : (elbow > target.elbow) ? (elbow - ((elbow - target.elbow) / 2)) : elbow;
+        waist = (waist < target.waist) ? (waist + ((target.waist - waist) / 2)) : (waist > target.waist) ? (waist - ((waist - target.waist) / 2)) : waist;
         break;
 
       case IncrementTime:
-        if (pinch != target.pinch)
-          pinch = (int) (pinchPos += (pinch < target.pinch ? pinchInc : 0.0 - pinchInc));
-        if (wrist != target.wrist)
-          wrist = (int) (wristPos += (wrist < target.wrist ? wristInc : 0.0 - wristInc));
-        if (elbow != target.elbow)
-          elbow = (int) (elbowPos += (elbow < target.elbow ? elbowInc : 0.0 - elbowInc));
-        if (waist != target.waist)
-          waist = (int) (waistPos += (waist < target.waist ? waistInc : 0.0 - waistInc));
+        {
+          double s = (double) (micros() - lastUpdate) / 1000.0f;
+          pinch = (int) (pinchPos += (pinch < target.pinch ? s*pinchInc : pinch > target.pinch ? -(s*pinchInc) : 0.0f));
+          wrist = (int) (wristPos += (wrist < target.wrist ? s*wristInc : wrist > target.wrist ? -(s*wristInc) : 0.0f));
+          elbow = (int) (elbowPos += (elbow < target.elbow ? s*elbowInc : elbow > target.elbow ? -(s*elbowInc) : 0.0f));
+          waist = (int) (waistPos += (waist < target.waist ? s*waistInc : waist > target.waist ? -(s*waistInc) : 0.0f));
+
+          pinch = clip(pinch, range.a.pinch, range.b.pinch);
+          wrist = clip(wrist, range.a.wrist, range.b.wrist);
+          elbow = clip(elbow, range.a.elbow, range.b.elbow);
+          waist = clip(waist, range.a.waist, range.b.waist);
+        }
         break;
     }
 
-    if (last.pinch != pinch) {
-      pinchServo.writeMicroseconds(last.pinch = pinch);
-    }
-    if (last.wrist != wrist) {
-      wristServo.writeMicroseconds(last.wrist = wrist);
-    }
-    if (last.elbow != elbow) {
-      elbowServo.writeMicroseconds(last.elbow = elbow);
-    }
-    if (last.waist != waist) {
-      waistServo.writeMicroseconds(last.waist = waist);
+    if ((mode != IncrementTime) || ((micros() - lastUpdate) >= 1000)) {
+      lastUpdate = micros();
+  
+      if (last.pinch != pinch) {
+        pinchServo.writeMicroseconds(last.pinch = pinch);
+      }
+      if (last.wrist != wrist) {
+        wristServo.writeMicroseconds(last.wrist = wrist);
+      }
+      if (last.elbow != elbow) {
+        elbowServo.writeMicroseconds(last.elbow = elbow);
+      }
+      if (last.waist != waist) {
+        waistServo.writeMicroseconds(last.waist = waist);
+      }
     }
   }
 
-  void write(Pos &pos, int ms = 0) {
+  void write(Pos &pos, int ms = 0, bool wait = false) {
     target = pos;
-    if (mode == IncrementTime) {
-      if (ms == 0)
-        ms = 1;
-      pinchInc = ((float) pinch - (float) pos.pinch) / (float) ms;
-      wristInc = ((float) wrist - (float) pos.wrist) / (float) ms;
-      elbowInc = ((float) elbow - (float) pos.elbow) / (float) ms;
-      waistInc = ((float) waist - (float) pos.waist) / (float) ms;
-      if (pinchInc < 0)
-        pinchInc *= -1.0;
-      if (wristInc < 0)
-        wristInc *= -1.0;
-      if (elbowInc < 0)
-        elbowInc *= -1.0;
-      if (waistInc < 0)
-        waistInc *= -1.0;
-    }
-    write();
+    lastUpdate = micros();
+
+    if (ms == 0)
+      ms = 1;
+      
+    if (pinch < target.pinch)
+      pinchInc = (double) (target.pinch - pinch) / (double) ms;
+    else if (pinch > target.pinch)
+      pinchInc = (double) (pinch - target.pinch) / (double) ms;
+    else
+      pinchInc = 0.0;
+
+    if (wrist < target.wrist)
+      wristInc = (double) (target.wrist - wrist) / (double) ms;
+    else if (wrist > target.wrist)
+      wristInc = (double) (wrist - target.wrist) / (double) ms;
+    else
+      wristInc = 0.0;
+
+    if (elbow < target.elbow)
+      elbowInc = (double) (target.elbow - elbow) / (double) ms;
+    else if (elbow > target.elbow)
+      elbowInc = (double) (elbow - target.elbow) / (double) ms;
+    else
+      elbowInc = 0.0;
+
+    if (waist < target.waist)
+      waistInc = (double) (target.waist - waist) / (double) ms;
+    else if (waist > target.waist)
+      waistInc = (double) (waist - target.waist) / (double) ms;
+    else
+      waistInc = 0.0;
+
+    if (wait)
+      delay(ms);
+    else
+      write();
   }
 
   // "Park" the output arm so it lays
@@ -201,12 +211,10 @@ public:
     parkMoves.addTail(Pos(1050, 2100,  580,  620));
     parkMoves.addTail(Pos(1050, 2300,  450,  620));
 
-    Node <Pos> *ptr = parkMoves.head;
+    Node<Pos> *ptr;
     attach();
-    while (ptr != nullptr) {
+    for (ptr = parkMoves.head; ptr != nullptr; ptr = ptr->next) {
       *this = ptr->t;
-      write();
-      ptr = ptr->next;
       delay(1000);
     }
   }

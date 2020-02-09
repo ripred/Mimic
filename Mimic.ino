@@ -51,6 +51,7 @@
 |*|      can be evenly spread across a given amount of time. This will allow
 |*|      further enhancement as a "playback speed" setting can then be added.
 |*| 
+|*|  -!See if having a keywords.txt file in current folder can be used
 |*|  - Add googly eyes to servo arm :-)
 |*|  - Add ability to play "Scissors/Rock/Paper" against the arm! :-)
 |*|  - Add mic and op-amp to have dance-party mode!
@@ -140,6 +141,34 @@ void setup() {
   // load last saved movements from EEPROM
   loadFromEeprom();
 
+  outArm.setMode(IncrementTime);
+
+  // test timed moves
+  outArm.attach();
+  outArm.delay(250);
+
+  Pos pos(outArm.pinch, outArm.wrist, outArm.elbow, 1582);
+  outArm.write(pos, 1000, true);
+
+  int incr = 300;
+  
+  pos.wrist -= incr;
+  pos.elbow -= incr;
+  pos.waist += incr;
+  outArm.write(pos, 1000, true);
+
+  pos.wrist += incr * 2;
+  pos.elbow += incr * 2;
+  pos.waist -= incr * 2;
+  outArm.write(pos, 3000, true);
+
+  pos.wrist -= incr;
+  pos.elbow -= incr;
+  pos.waist += incr;
+  outArm.write(pos, 1000, true);
+
+  outArm.detach();
+  
   outArm.setMode(IncrementHalf);
 
   setMode(IDLE);
