@@ -5,7 +5,7 @@
 #include "mimic.h"
 
 
-enum UpdateMode { Immediate, Increment1, IncrementHalf, IncrementTime };
+enum UpdateMode : unsigned { Immediate, Increment1, IncrementHalf, IncrementTime };
 
 class OutputArm : public Arm {
 private:
@@ -15,8 +15,8 @@ public:
 
   Servo pinchServo, wristServo, elbowServo, waistServo;
   Pos last, target;
-  double pinchInc, wristInc, elbowInc, waistInc;
-  double pinchPos, wristPos, elbowPos, waistPos;
+  float pinchInc, wristInc, elbowInc, waistInc;
+  float pinchPos, wristPos, elbowPos, waistPos;
   uint32_t lastUpdate;
 
   OutputArm(void) = delete;
@@ -33,11 +33,9 @@ public:
     pinchPos = target.pinch = pinch = range.a.pinch;  // set pincher to wide open, not the midpoint like the others
     wristPos = target.wrist = wrist = ((range.b.wrist - range.a.wrist) / 2) + range.a.wrist;
     elbowPos = target.elbow = elbow = ((range.b.elbow - range.a.elbow) / 2) + range.a.elbow;
-//  waistPos = target.waist = waist = ((range.b.waist - range.a.waist) / 2) + range.a.waist;
     waistPos = target.waist = waist = 1582;
 
-
-    pinchInc = wristInc = elbowInc = waistInc = 1;
+    pinchInc = wristInc = elbowInc = waistInc = 1.0f;
     lastUpdate = micros();
   }
 
@@ -59,14 +57,14 @@ public:
     waistServo.detach();
   }
 
+  // Map another Arm object's position onto our position
   Arm & operator = (Arm &arm) {
     target.pinch = map(arm.pinch, arm.range.a.pinch, arm.range.b.pinch, range.a.pinch, range.b.pinch);
     target.wrist = map(arm.wrist, arm.range.a.wrist, arm.range.b.wrist, range.a.wrist, range.b.wrist);
     target.elbow = map(arm.elbow, arm.range.a.elbow, arm.range.b.elbow, range.a.elbow, range.b.elbow);
     target.waist = map(arm.waist, arm.range.a.waist, arm.range.b.waist, range.a.waist, range.b.waist);
-
-    pinchInc = wristInc = elbowInc = waistInc = 1.0;
-
+    calcIncs();
+    pinchInc = wristInc = elbowInc = waistInc = 1.0f;
     return *this;
   }
 
@@ -74,9 +72,8 @@ public:
   //
   OutputArm & operator = (Pos &pos) {
     target = pos;
-
-    pinchInc = wristInc = elbowInc = waistInc = 1.0;
-
+    calcIncs();
+    pinchInc = wristInc = elbowInc = waistInc = 1.0f;
     return *this;
   }
 
@@ -84,13 +81,7 @@ public:
   //
   void setMode(UpdateMode m) {
     mode = m;
-    if (mode == IncrementTime) {
-      pinchPos = pinch;
-      wristPos = wrist;
-      elbowPos = elbow;
-      waistPos = waist;
-      pinchInc = wristInc = elbowInc = waistInc = 1;
-    }
+    calcIncs();
   }
 
   // Pause for the specified number of milliseconds,
@@ -102,6 +93,38 @@ public:
       write();
     }
   }
+
+  // Calculate the increment values for all 4 axis
+  // from the current position to the target and
+  // set the float Pos values to the current start
+  // position. Used for timed movements
+  void calcIncs(float ms = 0.0) {
+    lastUpdate = millis();
+    if (ms == 0.0) ms = 350.0;
+
+    pinchPos = pinch;
+    wristPos = wrist;
+    elbowPos = elbow;
+    waistPos = waist;
+
+    pinchInc = (pinch < target.pinch) ? (float) (target.pinch - pinch) / (float) ms : (pinch > target.pinch) ? (float) (pinch - target.pinch) / (float) ms : 0.0;
+    wristInc = (wrist < target.wrist) ? (float) (target.wrist - wrist) / (float) ms : (wrist > target.wrist) ? (float) (wrist - target.wrist) / (float) ms : 0.0;
+    elbowInc = (elbow < target.elbow) ? (float) (target.elbow - elbow) / (float) ms : (elbow > target.elbow) ? (float) (elbow - target.elbow) / (float) ms : 0.0;
+    waistInc = (waist < target.waist) ? (float) (target.waist - waist) / (float) ms : (waist > target.waist) ? (float) (waist - target.waist) / (float) ms : 0.0;
+  }
+
+
+  void write(Pos &pos, int ms = 0, bool wait = false) {
+    target = pos;
+
+    calcIncs();
+
+    if (wait)
+      delay(ms);
+    else
+      write();
+  }
+
 
   // Update the servos towards the target position
   // using the current update mode
@@ -127,11 +150,16 @@ public:
 
       case IncrementTime:
         {
-          double s = (double) (micros() - lastUpdate) / 1000.0f;
-          pinch = (int) (pinchPos += (pinch < target.pinch ? s*pinchInc : pinch > target.pinch ? -(s*pinchInc) : 0.0f));
-          wrist = (int) (wristPos += (wrist < target.wrist ? s*wristInc : wrist > target.wrist ? -(s*wristInc) : 0.0f));
-          elbow = (int) (elbowPos += (elbow < target.elbow ? s*elbowInc : elbow > target.elbow ? -(s*elbowInc) : 0.0f));
-          waist = (int) (waistPos += (waist < target.waist ? s*waistInc : waist > target.waist ? -(s*waistInc) : 0.0f));
+          float elapsed = millis() - lastUpdate;
+          float pinchAmt = elapsed * pinchInc;
+          float wristAmt = elapsed * wristInc;
+          float elbowAmt = elapsed * elbowInc;
+          float waistAmt = elapsed * waistInc;
+  
+          pinch = (unsigned) ((pinch < target.pinch) ? (pinchPos + pinchAmt) : (pinch > target.pinch) ? (pinchPos - pinchAmt) : pinch);
+          wrist = (unsigned) ((wrist < target.wrist) ? (wristPos + wristAmt) : (wrist > target.wrist) ? (wristPos - wristAmt) : wrist);
+          elbow = (unsigned) ((elbow < target.elbow) ? (elbowPos + elbowAmt) : (elbow > target.elbow) ? (elbowPos - elbowAmt) : elbow);
+          waist = (unsigned) ((waist < target.waist) ? (waistPos + waistAmt) : (waist > target.waist) ? (waistPos - waistAmt) : waist);
 
           pinch = clip(pinch, range.a.pinch, range.b.pinch);
           wrist = clip(wrist, range.a.wrist, range.b.wrist);
@@ -141,64 +169,20 @@ public:
         break;
     }
 
-    if ((mode != IncrementTime) || ((micros() - lastUpdate) >= 1000)) {
-      lastUpdate = micros();
-  
-      if (last.pinch != pinch) {
-        pinchServo.writeMicroseconds(last.pinch = pinch);
-      }
-      if (last.wrist != wrist) {
-        wristServo.writeMicroseconds(last.wrist = wrist);
-      }
-      if (last.elbow != elbow) {
-        elbowServo.writeMicroseconds(last.elbow = elbow);
-      }
-      if (last.waist != waist) {
-        waistServo.writeMicroseconds(last.waist = waist);
-      }
+    if (last.pinch != pinch) {
+      pinchServo.writeMicroseconds(last.pinch = pinch);
+    }
+    if (last.wrist != wrist) {
+      wristServo.writeMicroseconds(last.wrist = wrist);
+    }
+    if (last.elbow != elbow) {
+      elbowServo.writeMicroseconds(last.elbow = elbow);
+    }
+    if (last.waist != waist) {
+      waistServo.writeMicroseconds(last.waist = waist);
     }
   }
 
-  void write(Pos &pos, int ms = 0, bool wait = false) {
-    target = pos;
-    lastUpdate = micros();
-
-    if (ms == 0)
-      ms = 1;
-      
-    if (pinch < target.pinch)
-      pinchInc = (double) (target.pinch - pinch) / (double) ms;
-    else if (pinch > target.pinch)
-      pinchInc = (double) (pinch - target.pinch) / (double) ms;
-    else
-      pinchInc = 0.0;
-
-    if (wrist < target.wrist)
-      wristInc = (double) (target.wrist - wrist) / (double) ms;
-    else if (wrist > target.wrist)
-      wristInc = (double) (wrist - target.wrist) / (double) ms;
-    else
-      wristInc = 0.0;
-
-    if (elbow < target.elbow)
-      elbowInc = (double) (target.elbow - elbow) / (double) ms;
-    else if (elbow > target.elbow)
-      elbowInc = (double) (elbow - target.elbow) / (double) ms;
-    else
-      elbowInc = 0.0;
-
-    if (waist < target.waist)
-      waistInc = (double) (target.waist - waist) / (double) ms;
-    else if (waist > target.waist)
-      waistInc = (double) (waist - target.waist) / (double) ms;
-    else
-      waistInc = 0.0;
-
-    if (wait)
-      delay(ms);
-    else
-      write();
-  }
 
   // "Park" the output arm so it lays
   // down across the top of the box
@@ -212,6 +196,7 @@ public:
     parkMoves.addTail(Pos(1050, 2300,  450,  620));
 
     Node<Pos> *ptr;
+    mode = Immediate;
     attach();
     for (ptr = parkMoves.head; ptr != nullptr; ptr = ptr->next) {
       *this = ptr->t;

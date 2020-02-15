@@ -112,7 +112,7 @@ static Pos iRange2 = {    850,           100,             30,            660    
 //                     pinch open      wrist down    elbow forward    waist left
 static Pos oRange1 = {    800,           650,            550,            550    };
 //                     pinch closed    wrist up      elbow back       waist right
-static Pos oRange2 = {   1500,          2300,           2280,           2365    };
+static Pos oRange2 = {   1600,          2300,           2280,           2365    };
 
 static Limits iRange(iRange1, iRange2);
 static Limits oRange(oRange1, oRange2);
@@ -141,34 +141,24 @@ void setup() {
   // load last saved movements from EEPROM
   loadFromEeprom();
 
-  outArm.setMode(IncrementTime);
-
   // test timed moves
-  outArm.attach();
-  outArm.delay(250);
+//  outArm.setMode(IncrementTime);
+//  outArm.attach();
+//  outArm.delay(500);
+//
+//  Pos pos(outArm.pinch,    650, 2000, 1582);
+//  outArm.write(pos, 1000, true);
+//
+//  pos = Pos(outArm.pinch, 2100, 1450, 1582);
+//  outArm.write(pos, 750, true);
+//
+//  pos = Pos(outArm.pinch,  650, 1650,  650);
+//  outArm.write(pos, 750, true);
+//
+//  pos = Pos(outArm.pinch,  650, 2000, 1582);
+//  outArm.write(pos, 750, true);
+//  outArm.detach();
 
-  Pos pos(outArm.pinch, outArm.wrist, outArm.elbow, 1582);
-  outArm.write(pos, 1000, true);
-
-  int incr = 300;
-  
-  pos.wrist -= incr;
-  pos.elbow -= incr;
-  pos.waist += incr;
-  outArm.write(pos, 1000, true);
-
-  pos.wrist += incr * 2;
-  pos.elbow += incr * 2;
-  pos.waist -= incr * 2;
-  outArm.write(pos, 3000, true);
-
-  pos.wrist -= incr;
-  pos.elbow -= incr;
-  pos.waist += incr;
-  outArm.write(pos, 1000, true);
-
-  outArm.detach();
-  
   outArm.setMode(IncrementHalf);
 
   setMode(IDLE);
