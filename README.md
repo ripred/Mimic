@@ -49,8 +49,8 @@ TODO:
      further enhancement as a "playback speed" setting can then be added.
  + Add a SoftSerial port and implement an API to allow external control
  + Add HM-10 BlueTooth module to SoftSerial port for wireless control
- + Use the serial API to drive the arm from my JavaChess repo
- + Use the serial API to be able generate arm animations whe someone scores from my nhl/baseball feeds repo
+ + Use the serial API to drive the arm [from my JavaChess repo](https://github.com/ripred/JavaChess)
+ + Use the serial API to be able generate arm animations whe someone scores [from my nhl/baseball feeds repo](https://github.com/ripred/sportslist)
 
 ![](MimicSchematic.png)
 
