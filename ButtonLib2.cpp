@@ -3,6 +3,9 @@
 // PushButton library version 1.0
 // written 2011 - trent m. wyatt
 // 
+// v1.01 May 4, 2022
+// fixed typos in example code
+//
 
 #include <Arduino.h>
 #include "ButtonLib2.h"
