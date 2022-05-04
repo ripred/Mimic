@@ -47,7 +47,7 @@ void set_button_input(const char pin);
 // ====================================================================================================
 // 
 // Get the state of a push button input
-// Returns: true if the specified button was confidently pressed, otherwise returns false.
+// Returns: true if the specified button was continuously pressed, otherwise returns false.
 // 
 // Note: The button must be continuously pressed (no jitter/makes/breaks) for at least as long as KEYDBDELAY
 //       (key debounce delay). This smooths out the dozens of button connections/disconnections detected at
