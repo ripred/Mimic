@@ -26,7 +26,7 @@ void set_button_input(const char pin) {
 // ====================================================================================================
 // 
 // Get the state of a push button input
-// Returns: true if the specified button was confidently pressed, otherwise returns false.
+// Returns: true if the specified button was continuously pressed, otherwise returns false.
 // 
 // Note: The button must be continuously pressed (no jitter/makes/breaks) for at least as long as KEYDBDELAY
 //       (key debounce delay). This smooths out the dozens of button connections/disconnections detected at
@@ -160,13 +160,13 @@ void setup(void) {
   Serial.println(F("\n\nArduino Core Library - Button Library Test"));
 
   set_button_input(BUTTON_PIN_1);
-  set_button_input(BUTTON_PIN_1);
+  set_button_input(BUTTON_PIN_2);
 }
 
 
 void loop(void) {
-  report_button(check_button(BUTTON_PIN_1, Button1State), "button 1");
-  report_button(check_button(BUTTON_PIN_2, Button2State), "button 2");
+  report_button(check_button(BUTTON_PIN_1, Button1State), "push button 1");
+  report_button(check_button(BUTTON_PIN_2, Button2State), "push button 2");
 }
 
 
@@ -183,7 +183,7 @@ void report_button(const char state, const char* const label = NULL)  {
       return;
   }
   if (NULL != label) {
-    Serial.print(F(" on button "));
+    Serial.print(F(" on "));
     Serial.print(label);
   }
   Serial.println();
