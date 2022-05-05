@@ -153,26 +153,6 @@ char      Button1State = NOT_PRESSED;
 #define   BUTTON_PIN_2    3
 char      Button2State = NOT_PRESSED;
 
-
-void setup(void) {
-  Serial.end();
-  Serial.begin(250000L);
-  while (!Serial)
-    ;
-  Serial.flush();
-  Serial.println(F("\n\nArduino Core Library - Button Library Test"));
-
-  set_button_input(BUTTON_PIN_1);
-  set_button_input(BUTTON_PIN_2);
-}
-
-
-void loop(void) {
-  report_button(check_button(BUTTON_PIN_1, Button1State), "push button 1");
-  report_button(check_button(BUTTON_PIN_2, Button2State), "push button 2");
-}
-
-
 void report_button(const char state, const char* const label = NULL)  {
   switch (state) {
     case SINGLE_PRESS_SHORT: Serial.print(F("Single button short press")); break;
@@ -186,9 +166,30 @@ void report_button(const char state, const char* const label = NULL)  {
       return;
   }
   if (NULL != label) {
-    Serial.print(F(" on "));
+    Serial.print(F(" on push button "));
     Serial.print(label);
   }
   Serial.println();
 }
+
+void setup(void) {
+  Serial.begin(9600); // 115200, 2000000, whatever matches your serial monitor baud rate
+  uint32_t timer = millis() + 2000;  // limit how long we wait on the serial port in case of no connection
+  while (!Serial && millis() < timer) {
+    // do nothing but wait until we timeout or the Serial port initializes
+  }
+  Serial.flush();
+  Serial.println(F("\n\nArduino Core Library - Button Library Test"));
+
+  // In this example we use two buttons but you can use only one if you want
+  set_button_input(BUTTON_PIN_1);
+  set_button_input(BUTTON_PIN_2);
+}
+
+
+void loop(void) {
+  report_button(check_button(BUTTON_PIN_1, Button1State), "1");
+  report_button(check_button(BUTTON_PIN_2, Button2State), "2");
+}
+
 #endif  // #ifdef EXAMPLE_SETUP_AND_LOOP
