@@ -50,7 +50,7 @@ TODO:
  + Add a SoftSerial port and implement an API to allow external control
  + Add HM-10 Bluetooth module to SoftSerial port for wireless control
  + Use the serial API to drive the arm [from my JavaChess repo](https://github.com/ripred/JavaChess)
- + Use the serial API to be able generate arm animations when someone scores [from my nhl/baseball feeds repo](https://github.com/ripred/sportslist)
+ + Use the serial API to be able generate arm animations when someone scores [from my nhl/baseball game feeds repo](https://github.com/ripred/sportslist)
 
 ![](MimicSchematic.png)
 
