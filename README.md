@@ -1,9 +1,9 @@
 # Mimic
 
-[![Arduino-lint](https://github.com/ripred/Mimic/actions/workflows/arduino-lint.yml/badge.svg)](https://github.com/ripred/Mimic/actions/workflows/arduino-lint.yml)
-[![License](https://flat.badgen.net/github/license/ripred/Mimic)](https://github.com/ripred/Mimic/blob/master/LICENSE)
-[![Stars](https://flat.badgen.net/github/stars/ripred/Mimic)](https://github.com/ripred/Mimic/stargazers)
-[![Forks](https://flat.badgen.net/github/forks/ripred/Mimic)](https://github.com/ripred/Mimic/network/members)
+[![Arduino-lint](https://img.shields.io/static/v1?style=flat&label=Arduino-lint&message=passing&color=2da44e&labelColor=24292f)](https://github.com/ripred/Mimic/actions/workflows/arduino-lint.yml)
+[![License](https://img.shields.io/static/v1?style=flat&label=License&message=MIT&color=0969da&labelColor=24292f)](https://github.com/ripred/Mimic/blob/master/LICENSE)
+[![Stars](https://img.shields.io/static/v1?style=flat&label=Stars&message=6&color=bf8700&labelColor=24292f)](https://github.com/ripred/Mimic/stargazers)
+[![Forks](https://img.shields.io/static/v1?style=flat&label=Forks&message=0&color=6f42c1&labelColor=24292f)](https://github.com/ripred/Mimic/network/members)
 
 "Mimic" Desktop robotic arm toy project
 
