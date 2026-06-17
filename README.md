@@ -1,5 +1,10 @@
 # Mimic
 
+[![Arduino-lint](https://github.com/ripred/Mimic/actions/workflows/arduino-lint.yml/badge.svg)](https://github.com/ripred/Mimic/actions/workflows/arduino-lint.yml)
+[![License](https://flat.badgen.net/github/license/ripred/Mimic)](https://github.com/ripred/Mimic/blob/master/LICENSE)
+[![Stars](https://flat.badgen.net/github/stars/ripred/Mimic)](https://github.com/ripred/Mimic/stargazers)
+[![Forks](https://flat.badgen.net/github/forks/ripred/Mimic)](https://github.com/ripred/Mimic/network/members)
+
 "Mimic" Desktop robotic arm toy project
 
 Created January 2020 by Trent M. Wyatt
@@ -53,4 +58,3 @@ TODO:
  + Use the serial API to be able generate arm animations when someone scores [from my nhl/baseball game feeds repo](https://github.com/ripred/sportslist)
 
 ![](MimicSchematic.png)
-
